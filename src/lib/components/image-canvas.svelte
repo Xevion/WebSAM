@@ -1,10 +1,8 @@
 <script lang="ts">
 import { appState, resetPrompts, clearEmbedding } from '$lib/stores/app-state.svelte';
-import { loadImageFromFile, computeFit, canvasToImageCoords } from '$lib/utils/image';
+import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } from '$lib/utils/image';
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
-import { decodeMask } from '$lib/inference/decoder';
-import { encodeImage } from '$lib/inference/encoder';
-import { getSession } from '$lib/inference/session';
+import { getWorkerApi } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
 import Upload from '@lucide/svelte/icons/upload';
 import ImageIcon from '@lucide/svelte/icons/image';
@@ -120,13 +118,14 @@ async function handleFileDrop(files: FileList | null) {
 }
 
 async function runEncoder() {
-	const session = getSession();
-	if (!session || !appState.currentImage) return;
+	if (!appState.currentImage) return;
 
+	const api = getWorkerApi();
 	appState.inferenceProgress = { stage: 'encoding' };
 	const start = performance.now();
 	try {
-		appState.embedding = await encodeImage(session, appState.currentImage);
+		const rawData = imageToRawData(appState.currentImage);
+		appState.embedding = await api.encode(rawData);
 		const elapsed = Math.round(performance.now() - start);
 		appState.inferenceProgress = { stage: 'complete', timeMs: elapsed };
 	} catch (err) {
@@ -138,9 +137,9 @@ async function runEncoder() {
 }
 
 async function runDecoder(points: Point[], box: Box | null) {
-	const session = getSession();
-	if (!session || !appState.embedding || !appState.currentImage) return;
+	if (!appState.embedding || !appState.currentImage) return;
 
+	const api = getWorkerApi();
 	appState.inferenceProgress = { stage: 'decoding' };
 	const start = performance.now();
 
@@ -154,12 +153,10 @@ async function runDecoder(points: Point[], box: Box | null) {
 			maskInput.set(previousMask.subarray(idx * 256 * 256, (idx + 1) * 256 * 256));
 		}
 
-		const result = await decodeMask(
-			session,
-			appState.embedding,
+		const result = await api.decode(
 			{
-				points: points.length > 0 ? points : undefined,
-				box: box ?? undefined,
+				points: points.length > 0 ? $state.snapshot(points) : undefined,
+				box: box ? $state.snapshot(box) : undefined,
 			},
 			{
 				maskInput,
@@ -236,7 +233,8 @@ function handleMouseMove(event: MouseEvent) {
 
 function handleMouseUp(_event: MouseEvent) {
 	if (isDragging && appState.box && appState.isModelReady) {
-		void runDecoder([], appState.box);
+		// Snapshot the reactive box proxy so it's structured-cloneable for the worker
+		void runDecoder([], $state.snapshot(appState.box));
 	}
 	isDragging = false;
 	dragStart = null;

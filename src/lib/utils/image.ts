@@ -1,3 +1,25 @@
+import type { RawImageData } from '$lib/inference/types';
+
+/**
+ * Extracts raw RGBA pixel data from an HTMLImageElement for sending to a worker.
+ * Workers can't receive HTMLImageElement (non-cloneable), so we extract
+ * the pixels on the main thread first.
+ */
+export function imageToRawData(image: HTMLImageElement): RawImageData {
+	const canvas = document.createElement('canvas');
+	canvas.width = image.naturalWidth;
+	canvas.height = image.naturalHeight;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) throw new Error('Failed to create canvas context');
+	ctx.drawImage(image, 0, 0);
+	const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	return {
+		data: imageData.data,
+		width: canvas.width,
+		height: canvas.height,
+	};
+}
+
 /**
  * Load an image from a File object and return an HTMLImageElement.
  */

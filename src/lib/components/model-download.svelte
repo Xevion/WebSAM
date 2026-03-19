@@ -1,7 +1,7 @@
 <script lang="ts">
 import { appState, clearEmbedding } from '$lib/stores/app-state.svelte';
-import { downloadModel } from '$lib/inference/download';
-import { createSession, destroySession } from '$lib/inference/session';
+import { getWorkerApi } from '$lib/inference/worker-api';
+import * as Comlink from 'comlink';
 import { formatBytes } from '$lib/inference/models';
 import Progress from '$lib/components/ui/progress.svelte';
 import Button from '$lib/components/ui/button.svelte';
@@ -11,8 +11,6 @@ import CheckCircle from '@lucide/svelte/icons/check-circle';
 import AlertCircle from '@lucide/svelte/icons/alert-circle';
 import Loader from '@lucide/svelte/icons/loader-circle';
 import { css } from 'styled-system/css';
-
-let abortController: AbortController | null = null;
 
 const progress = $derived(appState.downloadProgress);
 
@@ -40,26 +38,25 @@ const stageLabel = $derived.by(() => {
 async function startDownload() {
 	if (!appState.selectedModel) return;
 
-	abortController = new AbortController();
+	// Snapshot reactive proxy so the plain object is structured-cloneable for postMessage
+	const model = $state.snapshot(appState.selectedModel);
+
+	const api = getWorkerApi();
 
 	try {
-		// Release any existing session's GPU memory before loading a new model
-		await destroySession();
 		appState.isModelReady = false;
 		clearEmbedding();
 
-		const buffers = await downloadModel(
-			appState.selectedModel,
-			(p) => {
+		await api.downloadAndInit(
+			model,
+			Comlink.proxy((p) => {
 				appState.downloadProgress = p;
-			},
-			abortController.signal,
+			}),
 		);
-		await createSession(appState.selectedModel, buffers);
 		appState.downloadProgress = {
 			stage: 'ready',
-			bytesDownloaded: appState.selectedModel.totalSize,
-			totalBytes: appState.selectedModel.totalSize,
+			bytesDownloaded: model.totalSize,
+			totalBytes: model.totalSize,
 		};
 		appState.isModelReady = true;
 	} catch (err) {
@@ -67,7 +64,7 @@ async function startDownload() {
 			appState.downloadProgress = {
 				stage: 'idle',
 				bytesDownloaded: 0,
-				totalBytes: appState.selectedModel.totalSize,
+				totalBytes: model.totalSize,
 			};
 		} else {
 			appState.downloadProgress = {
@@ -77,13 +74,11 @@ async function startDownload() {
 				error: err instanceof Error ? err.message : 'Unknown error',
 			};
 		}
-	} finally {
-		abortController = null;
 	}
 }
 
 function cancelDownload() {
-	abortController?.abort();
+	getWorkerApi().cancelDownload();
 }
 
 const wrapper = css({

@@ -1,5 +1,5 @@
 import { getOrt, type OnnxSession } from './session';
-import type { ImageEmbedding } from './types';
+import type { ImageEmbedding, RawImageData } from './types';
 
 /** ImageNet normalization constants used by both SAM1 and SAM2 */
 const IMAGE_MEAN = [0.485, 0.456, 0.406] as const;
@@ -7,7 +7,7 @@ const IMAGE_STD = [0.229, 0.224, 0.225] as const;
 const MODEL_INPUT_SIZE = 1024;
 
 /**
- * Preprocesses an image for SAM encoder input:
+ * Preprocesses raw pixel data for SAM encoder input:
  * 1. Resize longest edge to 1024, preserving aspect ratio
  * 2. Pad to 1024x1024
  * 3. Normalize with ImageNet mean/std
@@ -15,22 +15,32 @@ const MODEL_INPUT_SIZE = 1024;
  *
  * Returns a Float32Array in [1, 3, 1024, 1024] layout.
  */
-function preprocessImage(image: HTMLImageElement): Float32Array {
-	const { naturalWidth: w, naturalHeight: h } = image;
+function preprocessImage(imageData: RawImageData): Float32Array {
+	const { width: w, height: h } = imageData;
 
 	// Scale so longest edge = 1024
 	const scale = MODEL_INPUT_SIZE / Math.max(w, h);
 	const newW = Math.round(w * scale);
 	const newH = Math.round(h * scale);
 
-	// Draw resized image onto a 1024x1024 canvas (zero-padded)
+	// Draw source pixels onto an OffscreenCanvas at original size, then resize
+	const srcCanvas = new OffscreenCanvas(w, h);
+	const srcCtx = srcCanvas.getContext('2d');
+	if (!srcCtx) throw new Error('Failed to create offscreen canvas context');
+	// Structured clone may produce a Uint8ClampedArray backed by SharedArrayBuffer,
+	// but ImageData requires a plain ArrayBuffer backing. Copy to ensure compatibility.
+	const pixelData = new Uint8ClampedArray(imageData.data);
+	const srcImageData = new ImageData(pixelData, w, h);
+	srcCtx.putImageData(srcImageData, 0, 0);
+
+	// Resize into a 1024x1024 canvas (zero-padded)
 	const canvas = new OffscreenCanvas(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
 	const ctx = canvas.getContext('2d');
 	if (!ctx) throw new Error('Failed to create offscreen canvas context');
+	ctx.drawImage(srcCanvas, 0, 0, newW, newH);
 
-	ctx.drawImage(image, 0, 0, newW, newH);
-	const imageData = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
-	const pixels = imageData.data; // RGBA, HWC
+	const resized = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+	const pixels = resized.data; // RGBA, HWC
 
 	const totalPixels = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
 	const tensor = new Float32Array(3 * totalPixels);
@@ -52,10 +62,10 @@ function preprocessImage(image: HTMLImageElement): Float32Array {
  * The encoding is the expensive step (~500ms-25s depending on model and backend).
  * Results should be cached and reused for all decoder calls on the same image.
  */
-export async function encodeImage(session: OnnxSession, image: HTMLImageElement): Promise<ImageEmbedding> {
+export async function encodeImage(session: OnnxSession, imageData: RawImageData): Promise<ImageEmbedding> {
 	const ort = await getOrt();
 	const family = session.model.family;
-	const inputTensor = preprocessImage(image);
+	const inputTensor = preprocessImage(imageData);
 
 	if (family === 'sam1') {
 		// SlimSAM / MobileSAM encoder

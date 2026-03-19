@@ -5,7 +5,7 @@ import type {
 	MaskResult,
 	DownloadProgress,
 	InferenceProgress,
-	ImageEmbedding,
+	EmbeddingInfo,
 } from '$lib/inference/types';
 
 export const appState = $state({
@@ -21,7 +21,7 @@ export const appState = $state({
 	box: null as Box | null,
 
 	/** Cached image embedding from the encoder, cleared on image change. */
-	embedding: null as ImageEmbedding | null,
+	embedding: null as EmbeddingInfo | null,
 
 	maskResult: null as MaskResult | null,
 	inferenceProgress: { stage: 'idle' } as InferenceProgress,

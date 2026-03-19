@@ -86,3 +86,25 @@ export interface InferenceProgress {
 	timeMs?: number;
 	error?: string;
 }
+
+/** Raw RGBA pixel data extracted from an image on the main thread. */
+export interface RawImageData {
+	data: Uint8ClampedArray;
+	width: number;
+	height: number;
+}
+
+/** Lightweight confirmation returned from worker after encoding (avoids cloning large tensors). */
+export interface EmbeddingInfo {
+	type: 'sam1' | 'sam2';
+	/** Whether encoding succeeded and embedding is cached in the worker. */
+	ready: boolean;
+}
+
+/** Options for mask post-processing in the worker. */
+export interface PostProcessOptions {
+	/** Morphological smoothing passes (0 = disabled). */
+	smoothPasses: number;
+	/** Custom threshold override (default 0.0). */
+	threshold: number;
+}
