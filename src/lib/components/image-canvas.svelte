@@ -7,6 +7,7 @@ import {
 	drawPointMarker,
 	drawBoxOutline,
 	drawCrosshair,
+	drawHoverTriggerMarker,
 	renderImageLayer,
 	renderMaskLayer,
 	renderHoverDeltaLayer,
@@ -34,10 +35,21 @@ let isDragging = $state(false);
 let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
-let hoverDecodeTimer: ReturnType<typeof setTimeout> | null = null;
 let rethresholdTimer: ReturnType<typeof setTimeout> | null = null;
 let decodeRequestId = 0;
 let hoverRequestId = 0;
+
+// Single-inflight + drain-latest hover decode state
+let hoverInferenceRunning = false;
+let hoverPendingCoords: { cx: number; cy: number } | null = null;
+let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// EMA of hover decode latency for adaptive debounce floor
+const EMA_ALPHA = 0.2;
+let emaHoverLatency = 150; // initial estimate, converges quickly
+/** Adaptive debounce floor: ~30% of measured decode latency, clamped to [16, 300]ms */
+function getHoverDebounceFloor(): number {
+	return Math.max(16, Math.min(300, Math.round(emaHoverLatency * 0.3)));
+}
 
 let canvasWidth = $state(800);
 let canvasHeight = $state(600);
@@ -202,6 +214,20 @@ $effect(() => {
 		if (hoverLayer) ctx.drawImage(hoverLayer, 0, 0);
 	}
 
+	// Layer 3b: Hover trigger marker -- shows where the hover decode was triggered
+	if (appState.hoverMask && appState.hoverTriggerPos && appState.interactionMode === 'point') {
+		drawHoverTriggerMarker(
+			ctx,
+			appState.hoverTriggerPos.x,
+			appState.hoverTriggerPos.y,
+			mousePos.x,
+			mousePos.y,
+			scale,
+			offsetX,
+			offsetY,
+		);
+	}
+
 	// Layer 4: Interaction (drawn directly, cheap)
 	for (const point of appState.points) {
 		drawPointMarker(ctx, point, scale, offsetX, offsetY);
@@ -242,8 +268,9 @@ $effect(() => {
 	void appState.interactionMode;
 	void appState.currentImage;
 	appState.hoverMask = null;
+	appState.hoverTriggerPos = null;
 	invalidateAllLayers();
-	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
+	if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
 });
 
 // Re-run decoder when undo/redo bumps the generation counter
@@ -395,7 +422,8 @@ async function runDecoder(points: Point[], box: Box | null) {
 
 function handleCanvasClick(event: MouseEvent) {
 	appState.hoverMask = null;
-	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
+	appState.hoverTriggerPos = null;
+	if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
 
 	if (!appState.currentImage) {
 		logger.debug('Click ignored: no image loaded');
@@ -458,7 +486,7 @@ function handleMouseMove(event: MouseEvent) {
 		appState.box = { x1: dragStart.x, y1: dragStart.y, x2: x, y2: y };
 	}
 
-	// Debounced hover preview decode at cursor position
+	// Adaptive hover preview: debounce with EMA-tuned floor, single-inflight + drain-latest
 	if (
 		appState.hoverPreviewEnabled &&
 		appState.interactionMode === 'point' &&
@@ -466,23 +494,39 @@ function handleMouseMove(event: MouseEvent) {
 		appState.embedding &&
 		!isDragging
 	) {
-		if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
-		hoverDecodeTimer = setTimeout(() => {
-			void runHoverDecode(mousePos.x, mousePos.y);
-		}, 80);
+		if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
+		hoverDebounceTimer = setTimeout(() => {
+			void scheduleHoverDecode(mousePos.x, mousePos.y);
+		}, getHoverDebounceFloor());
 	}
 }
 
-async function runHoverDecode(cx: number, cy: number) {
+/**
+ * Single-inflight guard: if the GPU is busy, stash the latest cursor position
+ * and drain it when the current decode finishes. Never queues more than one
+ * pending call, so GPU work never stacks.
+ */
+function scheduleHoverDecode(cx: number, cy: number): Promise<void> {
+	if (hoverInferenceRunning) {
+		hoverPendingCoords = { cx, cy };
+		return Promise.resolve();
+	}
+	return runHoverDecode(cx, cy);
+}
+
+async function runHoverDecode(cx: number, cy: number): Promise<void> {
 	if (!appState.currentImage || !appState.embedding) return;
 	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
 	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) {
 		appState.hoverMask = null;
+		appState.hoverTriggerPos = null;
 		return;
 	}
 
+	hoverInferenceRunning = true;
 	const myId = ++hoverRequestId;
 	const api = getWorkerApi();
+	const t0 = performance.now();
 	try {
 		const hoverPoints: Point[] = [...$state.snapshot(appState.points), { x, y, label: 1 as const }];
 		const result = await withTimeout(
@@ -497,11 +541,23 @@ async function runHoverDecode(cx: number, cy: number) {
 			30_000,
 			'hover-decode',
 		);
-		if (myId !== hoverRequestId) return; // stale, discard
+		const elapsed = performance.now() - t0;
+		emaHoverLatency = EMA_ALPHA * elapsed + (1 - EMA_ALPHA) * emaHoverLatency;
+		if (myId !== hoverRequestId) return;
 		appState.hoverMask = result.masks[result.selectedIndex] ?? null;
+		appState.hoverTriggerPos = appState.hoverMask ? { x, y } : null;
 	} catch {
 		logger.debug('Hover decode failed');
 		appState.hoverMask = null;
+		appState.hoverTriggerPos = null;
+	} finally {
+		hoverInferenceRunning = false;
+		// Drain: if the cursor moved while we were decoding, run with the latest position
+		if (hoverPendingCoords) {
+			const { cx: px, cy: py } = hoverPendingCoords;
+			hoverPendingCoords = null;
+			void runHoverDecode(px, py);
+		}
 	}
 }
 

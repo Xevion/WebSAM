@@ -41,6 +41,8 @@ export const appState = $state({
 	hoverMask: null as ImageData | null,
 	/** Whether hover preview is enabled. */
 	hoverPreviewEnabled: true,
+	/** Image-space coordinates where the current hover decode was triggered. */
+	hoverTriggerPos: null as { x: number; y: number } | null,
 
 	webgpuAvailable: false,
 
@@ -100,6 +102,7 @@ export function clearImage(): void {
 	appState.imageFile = null;
 	appState.embedding = null;
 	appState.hoverMask = null;
+	appState.hoverTriggerPos = null;
 	resetPrompts();
 	promptHistory.clear();
 	void deleteCurrentImage();

@@ -110,6 +110,60 @@ export function drawCrosshair(ctx: CanvasRenderingContext2D, x: number, y: numbe
 	ctx.stroke();
 }
 
+/**
+ * Draws a subtle crosshair at the image-space position where the hover decode
+ * was triggered, giving the user visual context for the displayed hover mask.
+ * Only drawn when the cursor has drifted away from the trigger point.
+ */
+export function drawHoverTriggerMarker(
+	ctx: CanvasRenderingContext2D,
+	triggerX: number,
+	triggerY: number,
+	cursorX: number,
+	cursorY: number,
+	scale: number,
+	offsetX: number,
+	offsetY: number,
+): void {
+	const sx = triggerX * scale + offsetX;
+	const sy = triggerY * scale + offsetY;
+	const dist = Math.hypot(sx - cursorX, sy - cursorY);
+	// Only show when cursor has drifted noticeably from the trigger point
+	if (dist < 8) return;
+	// Fade in as the cursor drifts further, fully opaque at 40px+
+	const alpha = Math.min((dist - 8) / 32, 1);
+
+	const arm = 7;
+	const gap = 3;
+	ctx.save();
+	ctx.globalAlpha = alpha * 0.6;
+	ctx.strokeStyle = '#ffffff';
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.moveTo(sx - arm, sy);
+	ctx.lineTo(sx - gap, sy);
+	ctx.moveTo(sx + gap, sy);
+	ctx.lineTo(sx + arm, sy);
+	ctx.moveTo(sx, sy - arm);
+	ctx.lineTo(sx, sy - gap);
+	ctx.moveTo(sx, sy + gap);
+	ctx.lineTo(sx, sy + arm);
+	ctx.stroke();
+	ctx.strokeStyle = 'oklch(0.75 0.17 155 / 80%)';
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	ctx.moveTo(sx - arm, sy);
+	ctx.lineTo(sx - gap, sy);
+	ctx.moveTo(sx + gap, sy);
+	ctx.lineTo(sx + arm, sy);
+	ctx.moveTo(sx, sy - arm);
+	ctx.lineTo(sx, sy - gap);
+	ctx.moveTo(sx, sy + gap);
+	ctx.lineTo(sx, sy + arm);
+	ctx.stroke();
+	ctx.restore();
+}
+
 // ---------------------------------------------------------------------------
 // Layer caching — reused across frames to avoid allocation churn
 // ---------------------------------------------------------------------------
