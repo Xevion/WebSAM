@@ -10,6 +10,7 @@ import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
 import { initShortcuts } from '$lib/stores/shortcuts.svelte';
 import { restoreSession } from '$lib/stores/persistence.svelte';
+import { onWorkerError } from '$lib/inference/worker-api';
 import { onMount } from 'svelte';
 
 if (browser) {
@@ -18,8 +19,27 @@ if (browser) {
 
 onMount(() => {
 	const cleanup = initShortcuts();
-	void restoreSession();
-	return cleanup;
+	restoreSession().catch((err) => console.error('Session restore failed:', err));
+
+	const unsubWorkerError = onWorkerError((err) => {
+		console.error('[page] Worker crashed:', err.message);
+		appState.isModelReady = false;
+		appState.inferenceProgress = {
+			stage: 'error',
+			error: `Worker crashed: ${err.message}`,
+		};
+		appState.downloadProgress = {
+			stage: 'error',
+			bytesDownloaded: 0,
+			totalBytes: 0,
+			error: 'Worker crashed. Re-download to restart.',
+		};
+	});
+
+	return () => {
+		cleanup();
+		unsubWorkerError();
+	};
 });
 
 const pageLayout = css({

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { appState } from '$lib/stores/app-state.svelte';
+import { scheduleSave } from '$lib/stores/persistence.svelte';
 import SliderComponent from '$lib/components/ui/slider.svelte';
 import ToggleGroupComponent from '$lib/components/ui/toggle-group.svelte';
 import { css } from 'styled-system/css';
@@ -21,11 +22,15 @@ const colorPresets = [
 
 function handleViewModeChange(value: string[]) {
 	const mode = value[0] as 'overlay' | 'outline' | 'cutout';
-	if (mode) appState.maskViewMode = mode;
+	if (mode) {
+		appState.maskViewMode = mode;
+		scheduleSave();
+	}
 }
 
 function handleOpacityChange(value: number[]) {
 	appState.maskOpacity = (value[0] ?? 50) / 100;
+	scheduleSave();
 }
 
 const wrapper = css({
@@ -138,7 +143,7 @@ const scoreLabel = css({
 				<button
 					class={`${colorSwatch} ${appState.maskColor === preset.value ? selectedSwatch : ''}`}
 					style:background-color={preset.value}
-					onclick={() => { appState.maskColor = preset.value; }}
+					onclick={() => { appState.maskColor = preset.value; scheduleSave(); }}
 					aria-label={preset.label}
 				></button>
 			{/each}
@@ -153,7 +158,7 @@ const scoreLabel = css({
 					<div>
 						<button
 							class={`${maskThumb} ${appState.maskResult.selectedIndex === i ? maskThumbSelected : ''}`}
-							onclick={() => { if (appState.maskResult) appState.maskResult.selectedIndex = i; }}
+							onclick={() => { if (appState.maskResult) { appState.maskResult.selectedIndex = i; scheduleSave(); } }}
 						>
 							Mask {i + 1}
 						</button>

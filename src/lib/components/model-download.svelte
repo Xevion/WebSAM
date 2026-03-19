@@ -1,6 +1,6 @@
 <script lang="ts">
 import { appState, clearEmbedding } from '$lib/stores/app-state.svelte';
-import { getWorkerApi } from '$lib/inference/worker-api';
+import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
 import * as Comlink from 'comlink';
 import { formatBytes } from '$lib/inference/models';
 import Progress from '$lib/components/ui/progress.svelte';
@@ -47,11 +47,15 @@ async function startDownload() {
 		appState.isModelReady = false;
 		clearEmbedding();
 
-		await api.downloadAndInit(
-			model,
-			Comlink.proxy((p) => {
-				appState.downloadProgress = p;
-			}),
+		await withTimeout(
+			api.downloadAndInit(
+				model,
+				Comlink.proxy((p) => {
+					appState.downloadProgress = p;
+				}),
+			),
+			300_000,
+			'downloadAndInit',
 		);
 		appState.downloadProgress = {
 			stage: 'ready',

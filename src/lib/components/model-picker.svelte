@@ -3,6 +3,19 @@ import { appState } from '$lib/stores/app-state.svelte';
 import { MODEL_REGISTRY, MODEL_FAMILIES, formatBytes } from '$lib/inference/models';
 import { isModelCached } from '$lib/inference/download';
 import { Select, createListCollection } from '@ark-ui/svelte/select';
+
+let modelCached = $state(false);
+
+$effect(() => {
+	const modelId = appState.selectedModel?.id;
+	if (modelId) {
+		isModelCached(modelId).then((cached) => {
+			modelCached = cached;
+		});
+	} else {
+		modelCached = false;
+	}
+});
 import { Portal } from '@ark-ui/svelte/portal';
 import ChevronDown from '@lucide/svelte/icons/chevron-down';
 import Check from '@lucide/svelte/icons/check';
@@ -224,7 +237,7 @@ const cachedBadge = css({
 			</div>
 			<div class={detailRow}>
 				<span>Quantization: {appState.selectedModel.quantization.toUpperCase()}</span>
-				{#if isModelCached(appState.selectedModel.id)}
+				{#if modelCached}
 					<span class={cachedBadge}>Cached</span>
 				{/if}
 			</div>

@@ -9,6 +9,7 @@ import type {
 } from '$lib/inference/types';
 import { promptHistory } from './prompt-history.svelte';
 import { scheduleSave } from './persistence.svelte';
+import { deleteCurrentImage } from '$lib/storage/opfs';
 
 export const appState = $state({
 	selectedModel: null as ModelInfo | null,
@@ -37,6 +38,9 @@ export const appState = $state({
 	hoverPreviewEnabled: true,
 
 	webgpuAvailable: false,
+
+	/** Bumped by undo/redo to trigger a decoder re-run. */
+	decodeGeneration: 0,
 });
 
 export function resetPrompts(): void {
@@ -63,25 +67,30 @@ export function undoLastPrompt(): void {
 	promptHistory.pushRedo(currentState);
 	appState.points = prevState.points;
 	appState.box = prevState.box;
+	requestDecode();
 }
 
 export function redoLastPrompt(): void {
 	const currentState = { points: [...appState.points], box: appState.box };
 	const nextState = promptHistory.redo();
 	if (!nextState) return;
-	promptHistory.push(currentState);
+	promptHistory.pushUndoOnly(currentState);
 	appState.points = nextState.points;
 	appState.box = nextState.box;
+	requestDecode();
 }
 
-/** @deprecated Use undoLastPrompt instead */
-export function undoLastPoint(): void {
-	undoLastPrompt();
+export function requestDecode() {
+	appState.decodeGeneration++;
 }
 
 export function clearImage(): void {
 	appState.currentImage = null;
 	appState.imageFile = null;
+	appState.embedding = null;
+	appState.hoverMask = null;
 	resetPrompts();
 	promptHistory.clear();
+	void deleteCurrentImage();
+	scheduleSave();
 }

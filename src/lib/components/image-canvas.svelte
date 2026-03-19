@@ -1,9 +1,10 @@
 <script lang="ts">
+import { untrack } from 'svelte';
 import { appState, resetPrompts, clearEmbedding, pushPromptState } from '$lib/stores/app-state.svelte';
 import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } from '$lib/utils/image';
 import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
-import { getWorkerApi } from '$lib/inference/worker-api';
+import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
 import type { PanzoomObject } from '@panzoom/panzoom';
 import Upload from '@lucide/svelte/icons/upload';
@@ -22,6 +23,8 @@ let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
 let hoverDecodeTimer: ReturnType<typeof setTimeout> | null = null;
+let decodeRequestId = 0;
+let hoverRequestId = 0;
 
 let canvasWidth = $state(800);
 let canvasHeight = $state(600);
@@ -181,12 +184,35 @@ $effect(() => {
 	}
 });
 
+// Listen for image replacement from toolbar
+$effect(() => {
+	function onLoadFile(e: Event) {
+		const file = (e as CustomEvent<File>).detail;
+		if (!file) return;
+		const dt = new DataTransfer();
+		dt.items.add(file);
+		void handleFileDrop(dt.files);
+	}
+	window.addEventListener('websam:load-file', onLoadFile);
+	return () => window.removeEventListener('websam:load-file', onLoadFile);
+});
+
 // Clear hover state when interaction mode or image changes
 $effect(() => {
 	void appState.interactionMode;
 	void appState.currentImage;
 	appState.hoverMask = null;
 	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
+});
+
+// Re-run decoder when undo/redo bumps the generation counter
+$effect(() => {
+	const gen = appState.decodeGeneration;
+	if (gen > 0) {
+		untrack(() => {
+			void runDecoder([...appState.points], appState.box ? { ...appState.box } : null);
+		});
+	}
 });
 
 async function handleFileDrop(files: FileList | null) {
@@ -218,7 +244,7 @@ async function runEncoder() {
 	const start = performance.now();
 	try {
 		const rawData = imageToRawData(appState.currentImage);
-		appState.embedding = await api.encode(rawData);
+		appState.embedding = await withTimeout(api.encode(rawData), 120_000, 'encode');
 		const elapsed = Math.round(performance.now() - start);
 		appState.inferenceProgress = { stage: 'complete', timeMs: elapsed };
 	} catch (err) {
@@ -232,6 +258,7 @@ async function runEncoder() {
 async function runDecoder(points: Point[], box: Box | null) {
 	if (!appState.embedding || !appState.currentImage) return;
 
+	const myId = ++decodeRequestId;
 	const api = getWorkerApi();
 	appState.inferenceProgress = { stage: 'decoding' };
 	const start = performance.now();
@@ -246,17 +273,22 @@ async function runDecoder(points: Point[], box: Box | null) {
 			maskInput.set(previousMask.subarray(idx * 256 * 256, (idx + 1) * 256 * 256));
 		}
 
-		const result = await api.decode(
-			{
-				points: points.length > 0 ? $state.snapshot(points) : undefined,
-				box: box ? $state.snapshot(box) : undefined,
-			},
-			{
-				maskInput,
-				outputWidth: appState.currentImage.naturalWidth,
-				outputHeight: appState.currentImage.naturalHeight,
-			},
+		const result = await withTimeout(
+			api.decode(
+				{
+					points: points.length > 0 ? $state.snapshot(points) : undefined,
+					box: box ? $state.snapshot(box) : undefined,
+				},
+				{
+					maskInput,
+					outputWidth: appState.currentImage.naturalWidth,
+					outputHeight: appState.currentImage.naturalHeight,
+				},
+			),
+			60_000,
+			'decode',
 		);
+		if (myId !== decodeRequestId) return; // stale, discard
 		const elapsed = Math.round(performance.now() - start);
 		appState.maskResult = result;
 		appState.inferenceProgress = { stage: 'complete', timeMs: elapsed };
@@ -346,17 +378,23 @@ async function runHoverDecode(cx: number, cy: number) {
 		return;
 	}
 
+	const myId = ++hoverRequestId;
 	const api = getWorkerApi();
 	try {
 		const hoverPoints: Point[] = [...$state.snapshot(appState.points), { x, y, label: 1 as const }];
-		const result = await api.decode(
-			{ points: hoverPoints },
-			{
-				maskInput: null,
-				outputWidth: appState.currentImage.naturalWidth,
-				outputHeight: appState.currentImage.naturalHeight,
-			},
+		const result = await withTimeout(
+			api.decode(
+				{ points: hoverPoints },
+				{
+					maskInput: null,
+					outputWidth: appState.currentImage.naturalWidth,
+					outputHeight: appState.currentImage.naturalHeight,
+				},
+			),
+			30_000,
+			'hover-decode',
 		);
+		if (myId !== hoverRequestId) return; // stale, discard
 		appState.hoverMask = result.masks[result.selectedIndex] ?? null;
 	} catch {
 		appState.hoverMask = null;

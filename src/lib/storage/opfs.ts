@@ -15,8 +15,13 @@ export async function writeModelFile(filename: string, data: ArrayBuffer): Promi
 	const dir = await getModelsDir();
 	const fileHandle = await dir.getFileHandle(filename, { create: true });
 	const writable = await fileHandle.createWritable();
-	await writable.write(data);
-	await writable.close();
+	try {
+		await writable.write(data);
+		await writable.close();
+	} catch (err) {
+		await writable.abort();
+		throw err;
+	}
 }
 
 export async function readModelFile(filename: string): Promise<ArrayBuffer | null> {
@@ -27,16 +32,6 @@ export async function readModelFile(filename: string): Promise<ArrayBuffer | nul
 		return file.arrayBuffer();
 	} catch {
 		return null;
-	}
-}
-
-export async function hasModelFile(filename: string): Promise<boolean> {
-	try {
-		const dir = await getModelsDir();
-		await dir.getFileHandle(filename);
-		return true;
-	} catch {
-		return false;
 	}
 }
 
@@ -64,8 +59,13 @@ export async function writeCurrentImage(data: ArrayBuffer): Promise<void> {
 	const dir = await getImagesDir();
 	const fileHandle = await dir.getFileHandle('current-image', { create: true });
 	const writable = await fileHandle.createWritable();
-	await writable.write(data);
-	await writable.close();
+	try {
+		await writable.write(data);
+		await writable.close();
+	} catch (err) {
+		await writable.abort();
+		throw err;
+	}
 }
 
 export async function readCurrentImage(): Promise<Blob | null> {

@@ -1,5 +1,6 @@
 import type { ModelBuffers } from './session';
 import type { DownloadProgress, ModelInfo } from './types';
+import { getCachedModelMeta } from '../storage/metadata';
 
 /**
  * Fetches a single model file with streaming progress.
@@ -127,9 +128,9 @@ export async function downloadModel(
 }
 
 /**
- * Check if a model is already cached.
- * Currently always returns false since OPFS caching is not yet implemented.
+ * Check if a model is already cached in OPFS.
  */
-export function isModelCached(_modelId: string): boolean {
-	return false;
+export async function isModelCached(modelId: string): Promise<boolean> {
+	const meta = await getCachedModelMeta(modelId);
+	return meta !== undefined;
 }

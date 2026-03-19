@@ -1,5 +1,6 @@
 import { registerHotkey } from '@ramstack/hotkey';
 import { appState, resetPrompts, undoLastPrompt, redoLastPrompt } from './app-state.svelte';
+import { scheduleSave } from './persistence.svelte';
 import { exportMask, exportCutout } from '$lib/utils/export';
 
 const SHORTCUTS = [
@@ -22,10 +23,12 @@ export function initShortcuts(): () => void {
 		registerHotkey(target, 'p', (e) => {
 			if (shouldIgnore(e)) return;
 			appState.interactionMode = 'point';
+			scheduleSave();
 		}),
 		registerHotkey(target, 'b', (e) => {
 			if (shouldIgnore(e)) return;
 			appState.interactionMode = 'box';
+			scheduleSave();
 		}),
 		registerHotkey(target, 'd', (e) => {
 			if (shouldIgnore(e)) return;

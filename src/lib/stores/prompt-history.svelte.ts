@@ -24,6 +24,10 @@ function createPromptHistory() {
 			redoStack = [];
 		},
 
+		pushUndoOnly(snapshot: PromptSnapshot): void {
+			undoStack = [...undoStack.slice(-(MAX_HISTORY - 1)), snapshot];
+		},
+
 		undo(): PromptSnapshot | undefined {
 			if (undoStack.length === 0) return undefined;
 			const state = undoStack[undoStack.length - 1]!;

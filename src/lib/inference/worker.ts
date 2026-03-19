@@ -73,7 +73,11 @@ const api = {
 			await createSession(model, buffers);
 
 			// Finish caching after session is ready
-			await cachePromise;
+			try {
+				await cachePromise;
+			} catch (e) {
+				console.warn('Model caching failed (session still active):', e);
+			}
 		} finally {
 			downloadController = null;
 		}

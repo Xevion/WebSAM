@@ -1,5 +1,5 @@
 <script lang="ts">
-import { appState, resetPrompts, undoLastPrompt, redoLastPrompt } from '$lib/stores/app-state.svelte';
+import { appState, resetPrompts, undoLastPrompt, redoLastPrompt, clearImage } from '$lib/stores/app-state.svelte';
 import { promptHistory } from '$lib/stores/prompt-history.svelte';
 import ToggleGroupComponent from '$lib/components/ui/toggle-group.svelte';
 import Tooltip from '$lib/components/ui/tooltip.svelte';
@@ -10,6 +10,8 @@ import Redo2 from '@lucide/svelte/icons/redo-2';
 import Trash2 from '@lucide/svelte/icons/trash-2';
 import DownloadIcon from '@lucide/svelte/icons/download';
 import Copy from '@lucide/svelte/icons/copy';
+import ImageOff from '@lucide/svelte/icons/image-off';
+import Replace from '@lucide/svelte/icons/replace';
 import { css } from 'styled-system/css';
 import { exportMask, exportCutout, copyMaskToClipboard } from '$lib/utils/export';
 import type { HTMLAttributes } from 'svelte/elements';
@@ -55,6 +57,18 @@ const separator = css({
 
 const hasMask = $derived(appState.maskResult !== null);
 const hasPoints = $derived(appState.points.length > 0);
+const hasImage = $derived(appState.currentImage !== null);
+
+let fileInputEl: HTMLInputElement | undefined = $state();
+
+function handleChangeImage(event: Event) {
+	const input = event.target as HTMLInputElement;
+	const file = input.files?.[0];
+	if (!file?.type.startsWith('image/')) return;
+	// Dispatch to the image-canvas handler via a custom event on window
+	window.dispatchEvent(new CustomEvent('websam:load-file', { detail: file }));
+	input.value = '';
+}
 </script>
 
 <div class={bar}>
@@ -158,4 +172,34 @@ const hasPoints = $derived(appState.points.length > 0);
 			</span>
 		{/snippet}
 	</Tooltip>
+
+	<div class={separator}></div>
+
+	<Tooltip content="Change image">
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={() => fileInputEl?.click()} disabled={!hasImage}>
+					<Replace size={14} />
+				</Button>
+			</span>
+		{/snippet}
+	</Tooltip>
+
+	<Tooltip content="Remove image">
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={clearImage} disabled={!hasImage}>
+					<ImageOff size={14} />
+				</Button>
+			</span>
+		{/snippet}
+	</Tooltip>
+
+	<input
+		bind:this={fileInputEl}
+		type="file"
+		accept="image/*"
+		onchange={handleChangeImage}
+		class={css({ position: 'absolute', opacity: 0, w: 0, h: 0 })}
+	/>
 </div>
