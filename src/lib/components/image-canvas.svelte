@@ -17,8 +17,24 @@ let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
 
-const canvasWidth = $derived(containerEl?.clientWidth ?? 800);
-const canvasHeight = $derived(containerEl?.clientHeight ?? 600);
+let canvasWidth = $state(800);
+let canvasHeight = $state(600);
+
+$effect(() => {
+	if (!containerEl) return;
+
+	canvasWidth = containerEl.clientWidth;
+	canvasHeight = containerEl.clientHeight;
+
+	const observer = new ResizeObserver((entries) => {
+		const entry = entries[0];
+		if (!entry) return;
+		canvasWidth = entry.contentRect.width;
+		canvasHeight = entry.contentRect.height;
+	});
+	observer.observe(containerEl);
+	return () => observer.disconnect();
+});
 
 const fit = $derived(
 	appState.currentImage

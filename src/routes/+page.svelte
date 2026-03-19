@@ -59,7 +59,6 @@ const canvasArea = css({
 });
 
 const rightPanel = css({
-	w: '15rem',
 	flexShrink: 0,
 	borderLeftWidth: '1px',
 	borderColor: 'border',

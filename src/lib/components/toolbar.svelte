@@ -10,6 +10,9 @@ import DownloadIcon from '@lucide/svelte/icons/download';
 import Copy from '@lucide/svelte/icons/copy';
 import { css } from 'styled-system/css';
 import { maskToBlob, createCutout } from '$lib/utils/image';
+import type { HTMLAttributes } from 'svelte/elements';
+
+type TooltipProps = (p?: Record<string, unknown>) => HTMLAttributes<HTMLElement>;
 
 const modeItems = [
 	{ value: 'point', label: 'Point' },
@@ -24,7 +27,7 @@ function handleModeChange(value: string[]) {
 	}
 }
 
-async function runEverythingMode() {
+function runEverythingMode() {
 	appState.interactionMode = 'everything';
 	resetPrompts();
 }
@@ -90,73 +93,87 @@ const hasPoints = $derived(appState.points.length > 0);
 	/>
 
 	<Tooltip content="Segment everything">
-		<button
-			class={css({
-				display: 'inline-flex',
-				alignItems: 'center',
-				gap: '1.5',
-				px: '3',
-				py: '1.5',
-				fontSize: 'sm',
-				fontWeight: 'medium',
-				color: 'fg.muted',
-				cursor: 'pointer',
-				border: 'none',
-				bg: 'transparent',
-				borderRadius: 'md',
-				transition: 'all 150ms',
-				_hover: { color: 'fg', bg: 'bg.muted' },
-			})}
-			onclick={runEverythingMode}
-			disabled={!appState.isModelReady || !appState.currentImage}
-		>
-			<Sparkles size={14} />
-			Everything
-		</button>
+		{#snippet children(props: TooltipProps)}
+			<button
+				{...props({
+					class: css({
+						display: 'inline-flex',
+						alignItems: 'center',
+						gap: '1.5',
+						px: '3',
+						py: '1.5',
+						fontSize: 'sm',
+						fontWeight: 'medium',
+						color: 'fg.muted',
+						cursor: 'pointer',
+						border: 'none',
+						bg: 'transparent',
+						borderRadius: 'md',
+						transition: 'all 150ms',
+						_hover: { color: 'fg', bg: 'bg.muted' },
+					}),
+					onclick: runEverythingMode,
+					disabled: !appState.isModelReady || !appState.currentImage,
+				})}
+			>
+				<Sparkles size={14} />
+				Everything
+			</button>
+		{/snippet}
 	</Tooltip>
 
 	<div class={separator}></div>
 
 	<Tooltip content="Undo last point">
-		<span>
-			<Button size="icon-sm" variant="ghost" onclick={undoLastPoint} disabled={!hasPoints}>
-				<Undo2 size={14} />
-			</Button>
-		</span>
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={undoLastPoint} disabled={!hasPoints}>
+					<Undo2 size={14} />
+				</Button>
+			</span>
+		{/snippet}
 	</Tooltip>
 
 	<Tooltip content="Clear all prompts">
-		<span>
-			<Button size="icon-sm" variant="ghost" onclick={resetPrompts} disabled={!hasPoints && !appState.box}>
-				<Trash2 size={14} />
-			</Button>
-		</span>
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={resetPrompts} disabled={!hasPoints && !appState.box}>
+					<Trash2 size={14} />
+				</Button>
+			</span>
+		{/snippet}
 	</Tooltip>
 
 	<div class={separator}></div>
 
 	<Tooltip content="Download mask as PNG">
-		<span>
-			<Button size="icon-sm" variant="ghost" onclick={exportMask} disabled={!hasMask}>
-				<DownloadIcon size={14} />
-			</Button>
-		</span>
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={exportMask} disabled={!hasMask}>
+					<DownloadIcon size={14} />
+				</Button>
+			</span>
+		{/snippet}
 	</Tooltip>
 
 	<Tooltip content="Download cutout">
-		<span>
-			<Button size="sm" variant="ghost" onclick={exportCutout} disabled={!hasMask}>
-				<DownloadIcon size={14} />
-				Cutout
-			</Button>
-		</span>
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="sm" variant="ghost" onclick={exportCutout} disabled={!hasMask}>
+					<DownloadIcon size={14} />
+					Cutout
+				</Button>
+			</span>
+		{/snippet}
 	</Tooltip>
 
 	<Tooltip content="Copy mask to clipboard">
-		<span>
-			<Button size="icon-sm" variant="ghost" onclick={copyMask} disabled={!hasMask}>
-				<Copy size={14} />
-			</Button>
-		</span>
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={copyMask} disabled={!hasMask}>
+					<Copy size={14} />
+				</Button>
+			</span>
+		{/snippet}
 	</Tooltip>
 </div>

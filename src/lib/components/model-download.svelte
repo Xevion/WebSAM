@@ -1,7 +1,7 @@
 <script lang="ts">
-import { appState } from '$lib/stores/app-state.svelte';
+import { appState, clearEmbedding } from '$lib/stores/app-state.svelte';
 import { downloadModel } from '$lib/inference/download';
-import { createSession } from '$lib/inference/session';
+import { createSession, destroySession } from '$lib/inference/session';
 import { formatBytes } from '$lib/inference/models';
 import Progress from '$lib/components/ui/progress.svelte';
 import Button from '$lib/components/ui/button.svelte';
@@ -43,18 +43,32 @@ async function startDownload() {
 	abortController = new AbortController();
 
 	try {
-		await downloadModel(
+		// Release any existing session's GPU memory before loading a new model
+		await destroySession();
+		appState.isModelReady = false;
+		clearEmbedding();
+
+		const buffers = await downloadModel(
 			appState.selectedModel,
 			(p) => {
 				appState.downloadProgress = p;
 			},
 			abortController.signal,
 		);
-		await createSession(appState.selectedModel);
+		await createSession(appState.selectedModel, buffers);
+		appState.downloadProgress = {
+			stage: 'ready',
+			bytesDownloaded: appState.selectedModel.totalSize,
+			totalBytes: appState.selectedModel.totalSize,
+		};
 		appState.isModelReady = true;
 	} catch (err) {
 		if (err instanceof DOMException && err.name === 'AbortError') {
-			appState.downloadProgress = { stage: 'idle', bytesDownloaded: 0, totalBytes: appState.selectedModel.totalSize };
+			appState.downloadProgress = {
+				stage: 'idle',
+				bytesDownloaded: 0,
+				totalBytes: appState.selectedModel.totalSize,
+			};
 		} else {
 			appState.downloadProgress = {
 				stage: 'error',

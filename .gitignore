@@ -30,3 +30,6 @@ vite.config.ts.timestamp-*
 
 # Bun
 bun.lock
+
+# ONNX model files (downloaded for local dev)
+/models

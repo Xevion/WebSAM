@@ -52,18 +52,17 @@ export function canvasToImageCoords(
 
 /**
  * Scale image-pixel coordinates to 1024x1024 model space.
- * All SAM encoder/decoder models operate in 1024x1024 coordinate space.
+ * SAM preprocessing scales the longest edge to 1024 and zero-pads the short edge,
+ * so coordinates use a uniform scale factor based on the longest edge.
  */
 export function imageToModelCoords(
 	imageX: number,
 	imageY: number,
 	imageWidth: number,
 	imageHeight: number,
-): { x: number; y: number } {
-	return {
-		x: (imageX / imageWidth) * 1024,
-		y: (imageY / imageHeight) * 1024,
-	};
+): [number, number] {
+	const scale = 1024 / Math.max(imageWidth, imageHeight);
+	return [imageX * scale, imageY * scale];
 }
 
 /**

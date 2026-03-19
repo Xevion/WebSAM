@@ -149,7 +149,7 @@ const scoreLabel = css({
 		<div class={section}>
 			<span class={sectionLabel}>Mask Selection</span>
 			<div class={maskList}>
-				{#each appState.maskResult.masks as _, i}
+				{#each appState.maskResult.masks as _, i (i)}
 					<div>
 						<button
 							class={`${maskThumb} ${appState.maskResult.selectedIndex === i ? maskThumbSelected : ''}`}

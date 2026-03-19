@@ -37,11 +37,13 @@ export interface PromptInput {
 }
 
 /**
- * SAM1 encoder output: only image_embeddings.
+ * SAM1 encoder output: image_embeddings + positional_embeddings.
+ * Both tensors are required as decoder inputs.
  */
 export interface Sam1Embedding {
 	type: 'sam1';
 	imageEmbeddings: Float32Array; // [1, 256, 64, 64]
+	imagePositionalEmbeddings: Float32Array; // [1, 256, 64, 64]
 }
 
 /**

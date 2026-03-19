@@ -3,10 +3,11 @@ import { Tooltip } from '@ark-ui/svelte/tooltip';
 import { Portal } from '@ark-ui/svelte/portal';
 import { css } from 'styled-system/css';
 import type { Snippet } from 'svelte';
+import type { HTMLAttributes } from 'svelte/elements';
 
 interface Props {
 	content: string;
-	children: Snippet;
+	children: Snippet<[(props?: Record<string, unknown>) => HTMLAttributes<HTMLElement>]>;
 }
 
 const { content: tooltipContent, children }: Props = $props();
@@ -32,7 +33,9 @@ const tooltipContentStyle = css({
 
 <Tooltip.Root openDelay={300} closeDelay={0}>
 	<Tooltip.Trigger>
-		{@render children()}
+		{#snippet asChild(props)}
+			{@render children(props as (p?: Record<string, unknown>) => HTMLAttributes<HTMLElement>)}
+		{/snippet}
 	</Tooltip.Trigger>
 	<Portal>
 		<Tooltip.Positioner>

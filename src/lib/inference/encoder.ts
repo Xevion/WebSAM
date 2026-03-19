@@ -1,31 +1,102 @@
-import type { OnnxSession } from './session';
+import { getOrt, type OnnxSession } from './session';
 import type { ImageEmbedding } from './types';
 
-/**
- * Stub for image encoding. In production, this would:
- * 1. Resize the image to 1024x1024
- * 2. Convert to CHW float tensor with model-appropriate normalization
- *    - SAM2: normalize to [-1, 1] range
- *    - SAM1: normalize with ImageNet mean/std
- * 3. Run the encoder ONNX session
- * 4. Return the embedding tensors
- */
-export async function encodeImage(session: OnnxSession, _image: HTMLImageElement): Promise<ImageEmbedding> {
-	await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 400));
+/** ImageNet normalization constants used by both SAM1 and SAM2 */
+const IMAGE_MEAN = [0.485, 0.456, 0.406] as const;
+const IMAGE_STD = [0.229, 0.224, 0.225] as const;
+const MODEL_INPUT_SIZE = 1024;
 
+/**
+ * Preprocesses an image for SAM encoder input:
+ * 1. Resize longest edge to 1024, preserving aspect ratio
+ * 2. Pad to 1024x1024
+ * 3. Normalize with ImageNet mean/std
+ * 4. Convert HWC -> CHW layout
+ *
+ * Returns a Float32Array in [1, 3, 1024, 1024] layout.
+ */
+function preprocessImage(image: HTMLImageElement): Float32Array {
+	const { naturalWidth: w, naturalHeight: h } = image;
+
+	// Scale so longest edge = 1024
+	const scale = MODEL_INPUT_SIZE / Math.max(w, h);
+	const newW = Math.round(w * scale);
+	const newH = Math.round(h * scale);
+
+	// Draw resized image onto a 1024x1024 canvas (zero-padded)
+	const canvas = new OffscreenCanvas(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+	const ctx = canvas.getContext('2d');
+	if (!ctx) throw new Error('Failed to create offscreen canvas context');
+
+	ctx.drawImage(image, 0, 0, newW, newH);
+	const imageData = ctx.getImageData(0, 0, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE);
+	const pixels = imageData.data; // RGBA, HWC
+
+	const totalPixels = MODEL_INPUT_SIZE * MODEL_INPUT_SIZE;
+	const tensor = new Float32Array(3 * totalPixels);
+
+	// rescale_factor = 1/255, then normalize with mean/std
+	for (let i = 0; i < totalPixels; i++) {
+		const rgbaIdx = i * 4;
+		for (let c = 0; c < 3; c++) {
+			const val = pixels[rgbaIdx + c] / 255.0;
+			tensor[c * totalPixels + i] = (val - IMAGE_MEAN[c]) / IMAGE_STD[c];
+		}
+	}
+
+	return tensor;
+}
+
+/**
+ * Runs the image through the SAM encoder and returns cached embedding tensors.
+ * The encoding is the expensive step (~500ms-25s depending on model and backend).
+ * Results should be cached and reused for all decoder calls on the same image.
+ */
+export async function encodeImage(session: OnnxSession, image: HTMLImageElement): Promise<ImageEmbedding> {
+	const ort = await getOrt();
 	const family = session.model.family;
+	const inputTensor = preprocessImage(image);
 
 	if (family === 'sam1') {
+		// SlimSAM / MobileSAM encoder
+		// Input: pixel_values [batch, 3, 1024, 1024]
+		// Outputs: image_embeddings [batch, 256, 64, 64], image_positional_embeddings [batch, 256, 64, 64]
+		const feeds = {
+			pixel_values: new ort.Tensor('float32', inputTensor, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]),
+		};
+
+		let results: Awaited<ReturnType<typeof session.encoderSession.run>>;
+		try {
+			results = await session.encoderSession.run(feeds);
+		} catch (err) {
+			throw new Error('SAM1 encoder inference failed', { cause: err });
+		}
+
 		return {
 			type: 'sam1',
-			imageEmbeddings: new Float32Array(1 * 256 * 64 * 64),
+			imageEmbeddings: results.image_embeddings.data as Float32Array,
+			imagePositionalEmbeddings: results.image_positional_embeddings.data as Float32Array,
 		};
+	}
+
+	// SAM2 / SAM2.1 encoder
+	// Input: image [1, 3, 1024, 1024]
+	// Outputs: image_embed [1, 256, 64, 64], high_res_feats_0 [1, 32, 256, 256], high_res_feats_1 [1, 64, 128, 128]
+	const feeds = {
+		image: new ort.Tensor('float32', inputTensor, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]),
+	};
+
+	let results: Awaited<ReturnType<typeof session.encoderSession.run>>;
+	try {
+		results = await session.encoderSession.run(feeds);
+	} catch (err) {
+		throw new Error('SAM2 encoder inference failed', { cause: err });
 	}
 
 	return {
 		type: 'sam2',
-		imageEmbed: new Float32Array(1 * 256 * 64 * 64),
-		highResFeats0: new Float32Array(1 * 32 * 256 * 256),
-		highResFeats1: new Float32Array(1 * 64 * 128 * 128),
+		imageEmbed: results.image_embed.data as Float32Array,
+		highResFeats0: results.high_res_feats_0.data as Float32Array,
+		highResFeats1: results.high_res_feats_1.data as Float32Array,
 	};
 }

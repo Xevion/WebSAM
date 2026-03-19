@@ -85,7 +85,7 @@ export function drawMaskOutline(
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
 			const idx = (y * width + x) * 4;
-			const isMask = data[idx + 3]! > 128;
+			const isMask = data[idx + 3] > 128;
 			if (!isMask) continue;
 
 			const isEdge =
@@ -93,10 +93,10 @@ export function drawMaskOutline(
 				x === width - 1 ||
 				y === 0 ||
 				y === height - 1 ||
-				data[((y - 1) * width + x) * 4 + 3]! <= 128 ||
-				data[((y + 1) * width + x) * 4 + 3]! <= 128 ||
-				data[(y * width + (x - 1)) * 4 + 3]! <= 128 ||
-				data[(y * width + (x + 1)) * 4 + 3]! <= 128;
+				data[((y - 1) * width + x) * 4 + 3] <= 128 ||
+				data[((y + 1) * width + x) * 4 + 3] <= 128 ||
+				data[(y * width + (x - 1)) * 4 + 3] <= 128 ||
+				data[(y * width + (x + 1)) * 4 + 3] <= 128;
 
 			if (isEdge) {
 				const px = x * scale + offsetX;

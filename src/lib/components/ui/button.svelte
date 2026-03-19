@@ -31,6 +31,7 @@ const classes = $derived(cx(button({ variant, size }), className));
 </script>
 
 {#if href}
+  <!-- eslint-disable svelte/no-navigation-without-resolve -->
   <a
     {href}
     class={classes}
@@ -39,6 +40,7 @@ const classes = $derived(cx(button({ variant, size }), className));
   >
     {@render children?.()}
   </a>
+  <!-- eslint-enable svelte/no-navigation-without-resolve -->
 {:else}
   <button
     class={classes}

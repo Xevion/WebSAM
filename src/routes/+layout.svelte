@@ -1,5 +1,6 @@
 <script lang="ts">
 import '../app.css';
+import { resolve } from '$app/paths';
 import { themeStore } from '$lib/stores/theme.svelte';
 import ThemeToggle from '$lib/components/theme-toggle.svelte';
 import Button from '$lib/components/ui/button.svelte';
@@ -78,7 +79,7 @@ const navActions = css({
 <div class={layout}>
   <header class={header}>
     <div class={headerInner}>
-      <a href="/" class={logoLink}>
+      <a href={resolve('/')} class={logoLink}>
         <Layers size={20} class={logoIcon} />
         <span class={logoText}>WebSAM</span>
       </a>
