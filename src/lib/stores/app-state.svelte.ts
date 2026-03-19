@@ -7,6 +7,7 @@ import type {
 	InferenceProgress,
 	EmbeddingInfo,
 } from '$lib/inference/types';
+import { promptHistory } from './prompt-history.svelte';
 
 export const appState = $state({
 	selectedModel: null as ModelInfo | null,
@@ -29,10 +30,16 @@ export const appState = $state({
 	maskColor: '#6366f1',
 	maskViewMode: 'overlay' as 'overlay' | 'outline' | 'cutout',
 
+	/** Lightweight mask shown during hover (not committed until click). */
+	hoverMask: null as ImageData | null,
+	/** Whether hover preview is enabled. */
+	hoverPreviewEnabled: true,
+
 	webgpuAvailable: false,
 });
 
 export function resetPrompts(): void {
+	pushPromptState();
 	appState.points = [];
 	appState.box = null;
 	appState.maskResult = null;
@@ -43,14 +50,36 @@ export function clearEmbedding(): void {
 	appState.embedding = null;
 }
 
+export function pushPromptState(): void {
+	promptHistory.push({ points: [...appState.points], box: appState.box });
+}
+
+export function undoLastPrompt(): void {
+	const currentState = { points: [...appState.points], box: appState.box };
+	const prevState = promptHistory.undo();
+	if (!prevState) return;
+	promptHistory.pushRedo(currentState);
+	appState.points = prevState.points;
+	appState.box = prevState.box;
+}
+
+export function redoLastPrompt(): void {
+	const currentState = { points: [...appState.points], box: appState.box };
+	const nextState = promptHistory.redo();
+	if (!nextState) return;
+	promptHistory.push(currentState);
+	appState.points = nextState.points;
+	appState.box = nextState.box;
+}
+
+/** @deprecated Use undoLastPrompt instead */
 export function undoLastPoint(): void {
-	if (appState.points.length > 0) {
-		appState.points = appState.points.slice(0, -1);
-	}
+	undoLastPrompt();
 }
 
 export function clearImage(): void {
 	appState.currentImage = null;
 	appState.imageFile = null;
 	resetPrompts();
+	promptHistory.clear();
 }

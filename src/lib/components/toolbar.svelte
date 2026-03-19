@@ -1,10 +1,12 @@
 <script lang="ts">
-import { appState, resetPrompts, undoLastPoint } from '$lib/stores/app-state.svelte';
+import { appState, resetPrompts, undoLastPrompt, redoLastPrompt } from '$lib/stores/app-state.svelte';
+import { promptHistory } from '$lib/stores/prompt-history.svelte';
 import ToggleGroupComponent from '$lib/components/ui/toggle-group.svelte';
 import Tooltip from '$lib/components/ui/tooltip.svelte';
 import Button from '$lib/components/ui/button.svelte';
 import Sparkles from '@lucide/svelte/icons/sparkles';
 import Undo2 from '@lucide/svelte/icons/undo-2';
+import Redo2 from '@lucide/svelte/icons/redo-2';
 import Trash2 from '@lucide/svelte/icons/trash-2';
 import DownloadIcon from '@lucide/svelte/icons/download';
 import Copy from '@lucide/svelte/icons/copy';
@@ -94,11 +96,21 @@ const hasPoints = $derived(appState.points.length > 0);
 
 	<div class={separator}></div>
 
-	<Tooltip content="Undo last point">
+	<Tooltip content="Undo (Ctrl+Z)">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
-				<Button size="icon-sm" variant="ghost" onclick={undoLastPoint} disabled={!hasPoints}>
+				<Button size="icon-sm" variant="ghost" onclick={undoLastPrompt} disabled={!promptHistory.canUndo}>
 					<Undo2 size={14} />
+				</Button>
+			</span>
+		{/snippet}
+	</Tooltip>
+
+	<Tooltip content="Redo (Ctrl+Shift+Z)">
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={redoLastPrompt} disabled={!promptHistory.canRedo}>
+					<Redo2 size={14} />
 				</Button>
 			</span>
 		{/snippet}

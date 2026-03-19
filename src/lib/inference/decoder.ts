@@ -2,6 +2,7 @@ import type { Tensor } from 'onnxruntime-web';
 import { getOrt, type OnnxSession, type OrtModule } from './session';
 import type { ImageEmbedding, PromptInput, MaskResult } from './types';
 import { imageToModelCoords } from '$lib/utils/image';
+import { smoothMask } from './morphology';
 
 export interface DecoderOptions {
 	/** Previous low-res mask for iterative refinement [1, 1, 256, 256]. Pass null for first decode. */
@@ -9,6 +10,8 @@ export interface DecoderOptions {
 	/** Output dimensions to resize masks to (typically the original image dimensions). */
 	outputWidth: number;
 	outputHeight: number;
+	/** Morphological smoothing passes applied after thresholding (0 = disabled). */
+	smoothPasses?: number;
 }
 
 const LOW_RES_MASK_SIZE = 256;
@@ -87,7 +90,8 @@ export async function decodeMask(
 	}
 
 	// Post-process: resize low-res masks to output dimensions and create ImageData
-	return postProcessMasks(rawMasks, rawScores, maskWidth, maskHeight, outputWidth, outputHeight);
+	const smoothPasses = options.smoothPasses ?? 0;
+	return postProcessMasks(rawMasks, rawScores, maskWidth, maskHeight, outputWidth, outputHeight, 0.0, smoothPasses);
 }
 
 async function runSam1Decoder(
@@ -216,6 +220,8 @@ function postProcessMasks(
 	maskHeight: number,
 	outputWidth: number,
 	outputHeight: number,
+	threshold: number = 0.0,
+	smoothPasses: number = 0,
 ): MaskResult {
 	const scores: number[] = [];
 	const masks: ImageData[] = [];
@@ -259,13 +265,28 @@ function postProcessMasks(
 				const logit = bilinearSample(rawMasks, maskOffset, maskWidth, maskHeight, srcX, srcY);
 
 				const pixelIdx = (y * outputWidth + x) * 4;
-				const inMask = logit > 0.0;
+				const inMask = logit > threshold;
 				data[pixelIdx] = inMask ? 255 : 0;
 				data[pixelIdx + 1] = inMask ? 255 : 0;
 				data[pixelIdx + 2] = inMask ? 255 : 0;
 				data[pixelIdx + 3] = inMask ? 255 : 0;
 
 				rawLogits[logitOffset + y * outputWidth + x] = logit;
+			}
+		}
+
+		if (smoothPasses > 0) {
+			const alphaChannel = new Uint8ClampedArray(outputPixels);
+			for (let j = 0; j < outputPixels; j++) {
+				alphaChannel[j] = data[j * 4 + 3]!;
+			}
+			const smoothed = smoothMask(alphaChannel, outputWidth, outputHeight, smoothPasses);
+			for (let j = 0; j < outputPixels; j++) {
+				const v = smoothed[j]!;
+				data[j * 4] = v;
+				data[j * 4 + 1] = v;
+				data[j * 4 + 2] = v;
+				data[j * 4 + 3] = v;
 			}
 		}
 
@@ -318,4 +339,56 @@ function bilinearSample(
 	const v11 = data[offset + y1 * width + x1];
 
 	return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+}
+
+/**
+ * Re-thresholds and re-smooths masks from already-upscaled raw logits.
+ * Avoids re-running the ONNX decoder -- only applies threshold + morphology.
+ */
+export function reprocessMasks(
+	rawLogits: Float32Array,
+	scores: number[],
+	selectedIndex: number,
+	lowResMasks: Float32Array,
+	outputWidth: number,
+	outputHeight: number,
+	threshold: number,
+	smoothPasses: number,
+): MaskResult {
+	const masks: ImageData[] = [];
+	const outputPixels = outputWidth * outputHeight;
+
+	for (let i = 0; i < NUM_MASKS; i++) {
+		const logitOffset = i * outputPixels;
+		const imageData = new ImageData(outputWidth, outputHeight);
+		const data = imageData.data;
+
+		for (let j = 0; j < outputPixels; j++) {
+			const inMask = rawLogits[logitOffset + j]! > threshold;
+			const v = inMask ? 255 : 0;
+			data[j * 4] = v;
+			data[j * 4 + 1] = v;
+			data[j * 4 + 2] = v;
+			data[j * 4 + 3] = v;
+		}
+
+		if (smoothPasses > 0) {
+			const alphaChannel = new Uint8ClampedArray(outputPixels);
+			for (let j = 0; j < outputPixels; j++) {
+				alphaChannel[j] = data[j * 4 + 3]!;
+			}
+			const smoothed = smoothMask(alphaChannel, outputWidth, outputHeight, smoothPasses);
+			for (let j = 0; j < outputPixels; j++) {
+				const v = smoothed[j]!;
+				data[j * 4] = v;
+				data[j * 4 + 1] = v;
+				data[j * 4 + 2] = v;
+				data[j * 4 + 3] = v;
+			}
+		}
+
+		masks.push(imageData);
+	}
+
+	return { masks, rawLogits, lowResMasks, scores, selectedIndex };
 }

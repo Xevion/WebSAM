@@ -1,5 +1,5 @@
 <script lang="ts">
-import { appState, resetPrompts, clearEmbedding } from '$lib/stores/app-state.svelte';
+import { appState, resetPrompts, clearEmbedding, pushPromptState } from '$lib/stores/app-state.svelte';
 import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } from '$lib/utils/image';
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
 import { getWorkerApi } from '$lib/inference/worker-api';
@@ -20,6 +20,7 @@ let isDragging = $state(false);
 let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
+let hoverDecodeTimer: ReturnType<typeof setTimeout> | null = null;
 
 let canvasWidth = $state(800);
 let canvasHeight = $state(600);
@@ -149,6 +150,11 @@ $effect(() => {
 	} else {
 		ctx.drawImage(img, offsetX, offsetY, img.naturalWidth * scale, img.naturalHeight * scale);
 
+		// Hover preview drawn before committed mask so committed mask takes priority
+		if (appState.hoverMask && !appState.maskResult) {
+			drawMaskOverlay(ctx, appState.hoverMask, appState.maskColor, 0.3, scale, offsetX, offsetY);
+		}
+
 		if (appState.maskResult) {
 			const mask = appState.maskResult.masks[appState.maskResult.selectedIndex];
 			if (mask) {
@@ -172,6 +178,14 @@ $effect(() => {
 	if (appState.interactionMode === 'point' && appState.currentImage) {
 		drawCrosshair(ctx, mousePos.x, mousePos.y);
 	}
+});
+
+// Clear hover state when interaction mode or image changes
+$effect(() => {
+	void appState.interactionMode;
+	void appState.currentImage;
+	appState.hoverMask = null;
+	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
 });
 
 async function handleFileDrop(files: FileList | null) {
@@ -252,6 +266,9 @@ async function runDecoder(points: Point[], box: Box | null) {
 }
 
 function handleCanvasClick(event: MouseEvent) {
+	appState.hoverMask = null;
+	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
+
 	if (!appState.currentImage || !appState.isModelReady) return;
 	if (appState.interactionMode !== 'point') return;
 	if (!canvasEl) return;
@@ -263,6 +280,7 @@ function handleCanvasClick(event: MouseEvent) {
 
 	// Right-click or shift+click = negative (label 0), left-click = positive (label 1)
 	const label: 0 | 1 = event.button === 2 || event.shiftKey ? 0 : 1;
+	pushPromptState();
 	const newPoints = [...appState.points, { x, y, label }];
 	appState.points = newPoints;
 	void runDecoder(newPoints, null);
@@ -284,6 +302,7 @@ function handleMouseDown(event: MouseEvent) {
 	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
 	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
 
+	pushPromptState();
 	isDragging = true;
 	dragStart = { x, y };
 	appState.box = { x1: x, y1: y, x2: x, y2: y };
@@ -298,6 +317,45 @@ function handleMouseMove(event: MouseEvent) {
 	if (isDragging && dragStart && appState.interactionMode === 'box') {
 		const { x, y } = canvasToImageCoords(mousePos.x, mousePos.y, fit.scale, fit.offsetX, fit.offsetY);
 		appState.box = { x1: dragStart.x, y1: dragStart.y, x2: x, y2: y };
+	}
+
+	// Debounced hover preview decode at cursor position
+	if (
+		appState.hoverPreviewEnabled &&
+		appState.interactionMode === 'point' &&
+		appState.currentImage &&
+		appState.embedding &&
+		!isDragging
+	) {
+		if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
+		hoverDecodeTimer = setTimeout(() => {
+			void runHoverDecode(mousePos.x, mousePos.y);
+		}, 150);
+	}
+}
+
+async function runHoverDecode(cx: number, cy: number) {
+	if (!appState.currentImage || !appState.embedding) return;
+	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
+	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) {
+		appState.hoverMask = null;
+		return;
+	}
+
+	const api = getWorkerApi();
+	try {
+		const hoverPoints: Point[] = [...$state.snapshot(appState.points), { x, y, label: 1 as const }];
+		const result = await api.decode(
+			{ points: hoverPoints },
+			{
+				maskInput: null,
+				outputWidth: appState.currentImage.naturalWidth,
+				outputHeight: appState.currentImage.naturalHeight,
+			},
+		);
+		appState.hoverMask = result.masks[result.selectedIndex] ?? null;
+	} catch {
+		appState.hoverMask = null;
 	}
 }
 

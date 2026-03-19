@@ -2,7 +2,7 @@ import * as Comlink from 'comlink';
 import { downloadModel } from './download';
 import { createSession, destroySession, getSession } from './session';
 import { encodeImage } from './encoder';
-import { decodeMask, type DecoderOptions } from './decoder';
+import { decodeMask, reprocessMasks, type DecoderOptions } from './decoder';
 import { readModelFile, writeModelFile } from '../storage/opfs';
 import { getCachedModelMeta, setCachedModelMeta } from '../storage/metadata';
 import type {
@@ -18,10 +18,20 @@ import type {
 let cachedEmbedding: ImageEmbedding | null = null;
 let downloadController: AbortController | null = null;
 
+// Cached decode output for fast re-threshold/re-smooth without re-running the decoder
+interface CachedDecodeResult {
+	rawLogits: Float32Array;
+	scores: number[];
+	selectedIndex: number;
+	lowResMasks: Float32Array;
+}
+let cachedDecodeResult: CachedDecodeResult | null = null;
+
 const api = {
 	async downloadAndInit(model: ModelInfo, onProgress: (progress: DownloadProgress) => void): Promise<void> {
 		await destroySession();
 		cachedEmbedding = null;
+		cachedDecodeResult = null;
 
 		const encoderFilename = `${model.id}-encoder`;
 		const decoderFilename = `${model.id}-decoder`;
@@ -83,12 +93,39 @@ const api = {
 	async decode(prompt: PromptInput, options: DecoderOptions): Promise<MaskResult> {
 		const session = getSession();
 		if (!session || !cachedEmbedding) throw new Error('No session or embedding');
-		return decodeMask(session, cachedEmbedding, prompt, options);
+		const result = await decodeMask(session, cachedEmbedding, prompt, options);
+		cachedDecodeResult = {
+			rawLogits: result.rawLogits,
+			scores: [...result.scores],
+			selectedIndex: result.selectedIndex,
+			lowResMasks: result.lowResMasks,
+		};
+		return result;
+	},
+
+	async rethreshold(
+		threshold: number,
+		smoothPasses: number,
+		outputWidth: number,
+		outputHeight: number,
+	): Promise<MaskResult | null> {
+		if (!cachedDecodeResult) return null;
+		return reprocessMasks(
+			cachedDecodeResult.rawLogits,
+			cachedDecodeResult.scores,
+			cachedDecodeResult.selectedIndex,
+			cachedDecodeResult.lowResMasks,
+			outputWidth,
+			outputHeight,
+			threshold,
+			smoothPasses,
+		);
 	},
 
 	async destroy(): Promise<void> {
 		await destroySession();
 		cachedEmbedding = null;
+		cachedDecodeResult = null;
 	},
 
 	getEmbedding(): ImageEmbedding | null {
@@ -97,6 +134,7 @@ const api = {
 
 	clearEmbedding(): void {
 		cachedEmbedding = null;
+		cachedDecodeResult = null;
 	},
 };
 

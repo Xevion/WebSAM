@@ -8,10 +8,17 @@ import Toolbar from '$lib/components/toolbar.svelte';
 import MaskControls from '$lib/components/mask-controls.svelte';
 import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
+import { initShortcuts } from '$lib/stores/shortcuts.svelte';
+import { onMount } from 'svelte';
 
 if (browser) {
 	appState.webgpuAvailable = 'gpu' in navigator;
 }
+
+onMount(() => {
+	const cleanup = initShortcuts();
+	return cleanup;
+});
 
 const pageLayout = css({
 	display: 'flex',
