@@ -1,6 +1,7 @@
 <script lang="ts">
 import { appState, resetPrompts, clearEmbedding, pushPromptState } from '$lib/stores/app-state.svelte';
 import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } from '$lib/utils/image';
+import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
 import { getWorkerApi } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
@@ -198,6 +199,8 @@ async function handleFileDrop(files: FileList | null) {
 		appState.currentImage = await loadImageFromFile(file);
 		resetPrompts();
 		clearEmbedding();
+		await persistImage(file);
+		scheduleSave();
 
 		if (appState.isModelReady) {
 			await runEncoder();
@@ -283,6 +286,7 @@ function handleCanvasClick(event: MouseEvent) {
 	pushPromptState();
 	const newPoints = [...appState.points, { x, y, label }];
 	appState.points = newPoints;
+	scheduleSave();
 	void runDecoder(newPoints, null);
 }
 
@@ -361,6 +365,7 @@ async function runHoverDecode(cx: number, cy: number) {
 
 function handleMouseUp(_event: MouseEvent) {
 	if (isDragging && appState.box && appState.isModelReady) {
+		scheduleSave();
 		// Snapshot the reactive box proxy so it's structured-cloneable for the worker
 		void runDecoder([], $state.snapshot(appState.box));
 	}

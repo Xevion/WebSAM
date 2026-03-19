@@ -9,6 +9,7 @@ import MaskControls from '$lib/components/mask-controls.svelte';
 import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
 import { initShortcuts } from '$lib/stores/shortcuts.svelte';
+import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onMount } from 'svelte';
 
 if (browser) {
@@ -17,6 +18,7 @@ if (browser) {
 
 onMount(() => {
 	const cleanup = initShortcuts();
+	void restoreSession();
 	return cleanup;
 });
 

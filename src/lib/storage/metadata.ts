@@ -1,4 +1,5 @@
 import { get, set, del } from 'idb-keyval';
+import type { Point, Box } from '$lib/inference/types';
 
 const PREFIX = 'websam:';
 
@@ -36,4 +37,22 @@ export async function getPreferences(): Promise<Record<string, unknown> | undefi
 
 export async function setPreferences(prefs: Record<string, unknown>): Promise<void> {
 	await set(`${PREFIX}preferences`, prefs);
+}
+
+export interface SessionState {
+	points: Point[];
+	box: Box | null;
+	hasImage: boolean;
+	maskViewMode: 'overlay' | 'outline' | 'cutout';
+	maskOpacity: number;
+	maskColor: string;
+	interactionMode: 'point' | 'box' | 'everything';
+}
+
+export async function getSessionState(): Promise<SessionState | undefined> {
+	return get<SessionState>(`${PREFIX}session`);
+}
+
+export async function setSessionState(state: SessionState): Promise<void> {
+	await set(`${PREFIX}session`, state);
 }

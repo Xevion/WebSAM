@@ -1,8 +1,14 @@
 const MODEL_DIR = 'models';
+const IMAGES_DIR = 'images';
 
 async function getModelsDir(): Promise<FileSystemDirectoryHandle> {
 	const root = await navigator.storage.getDirectory();
 	return root.getDirectoryHandle(MODEL_DIR, { create: true });
+}
+
+async function getImagesDir(): Promise<FileSystemDirectoryHandle> {
+	const root = await navigator.storage.getDirectory();
+	return root.getDirectoryHandle(IMAGES_DIR, { create: true });
 }
 
 export async function writeModelFile(filename: string, data: ArrayBuffer): Promise<void> {
@@ -52,4 +58,31 @@ export async function listModelFiles(): Promise<string[]> {
 		names.push(result.value[0]);
 	}
 	return names;
+}
+
+export async function writeCurrentImage(data: ArrayBuffer): Promise<void> {
+	const dir = await getImagesDir();
+	const fileHandle = await dir.getFileHandle('current-image', { create: true });
+	const writable = await fileHandle.createWritable();
+	await writable.write(data);
+	await writable.close();
+}
+
+export async function readCurrentImage(): Promise<Blob | null> {
+	try {
+		const dir = await getImagesDir();
+		const fileHandle = await dir.getFileHandle('current-image');
+		return fileHandle.getFile();
+	} catch {
+		return null;
+	}
+}
+
+export async function deleteCurrentImage(): Promise<void> {
+	try {
+		const dir = await getImagesDir();
+		await dir.removeEntry('current-image');
+	} catch {
+		// didn't exist
+	}
 }

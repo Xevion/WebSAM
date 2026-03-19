@@ -8,6 +8,7 @@ import type {
 	EmbeddingInfo,
 } from '$lib/inference/types';
 import { promptHistory } from './prompt-history.svelte';
+import { scheduleSave } from './persistence.svelte';
 
 export const appState = $state({
 	selectedModel: null as ModelInfo | null,
@@ -44,6 +45,7 @@ export function resetPrompts(): void {
 	appState.box = null;
 	appState.maskResult = null;
 	appState.inferenceProgress = { stage: 'idle' };
+	scheduleSave();
 }
 
 export function clearEmbedding(): void {
