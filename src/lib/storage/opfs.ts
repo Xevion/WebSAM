@@ -1,0 +1,55 @@
+const MODEL_DIR = 'models';
+
+async function getModelsDir(): Promise<FileSystemDirectoryHandle> {
+	const root = await navigator.storage.getDirectory();
+	return root.getDirectoryHandle(MODEL_DIR, { create: true });
+}
+
+export async function writeModelFile(filename: string, data: ArrayBuffer): Promise<void> {
+	const dir = await getModelsDir();
+	const fileHandle = await dir.getFileHandle(filename, { create: true });
+	const writable = await fileHandle.createWritable();
+	await writable.write(data);
+	await writable.close();
+}
+
+export async function readModelFile(filename: string): Promise<ArrayBuffer | null> {
+	try {
+		const dir = await getModelsDir();
+		const fileHandle = await dir.getFileHandle(filename);
+		const file = await fileHandle.getFile();
+		return file.arrayBuffer();
+	} catch {
+		return null;
+	}
+}
+
+export async function hasModelFile(filename: string): Promise<boolean> {
+	try {
+		const dir = await getModelsDir();
+		await dir.getFileHandle(filename);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export async function deleteModelFile(filename: string): Promise<void> {
+	try {
+		const dir = await getModelsDir();
+		await dir.removeEntry(filename);
+	} catch {
+		// File didn't exist
+	}
+}
+
+export async function listModelFiles(): Promise<string[]> {
+	const dir = await getModelsDir();
+	const names: string[] = [];
+	// TS DOM lib doesn't type the async iterator on FileSystemDirectoryHandle
+	const entries = (dir as unknown as AsyncIterable<[string, FileSystemHandle]>)[Symbol.asyncIterator]();
+	for (let result = await entries.next(); !result.done; result = await entries.next()) {
+		names.push(result.value[0]);
+	}
+	return names;
+}
