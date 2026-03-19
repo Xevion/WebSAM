@@ -1,21 +1,8 @@
 <script lang="ts">
 import { appState } from '$lib/stores/app-state.svelte';
 import { MODEL_REGISTRY, MODEL_FAMILIES, formatBytes } from '$lib/inference/models';
-import { isModelCached } from '$lib/inference/download';
+import { initModel } from '$lib/stores/inference-pipeline.svelte';
 import { Select, createListCollection } from '@ark-ui/svelte/select';
-
-let modelCached = $state(false);
-
-$effect(() => {
-	const modelId = appState.selectedModel?.id;
-	if (modelId) {
-		void isModelCached(modelId).then((cached) => {
-			modelCached = cached;
-		});
-	} else {
-		modelCached = false;
-	}
-});
 import { Portal } from '@ark-ui/svelte/portal';
 import ChevronDown from '@lucide/svelte/icons/chevron-down';
 import Check from '@lucide/svelte/icons/check';
@@ -42,6 +29,7 @@ function handleValueChange(value: string[]) {
 	if (model) {
 		appState.downloadProgress = { stage: 'idle', bytesDownloaded: 0, totalBytes: model.totalSize };
 		appState.isModelReady = false;
+		void initModel(model);
 	}
 }
 
@@ -237,8 +225,8 @@ const cachedBadge = css({
 			</div>
 			<div class={detailRow}>
 				<span>Quantization: {appState.selectedModel.quantization.toUpperCase()}</span>
-				{#if modelCached}
-					<span class={cachedBadge}>Cached</span>
+				{#if appState.downloadProgress.stage === 'ready'}
+					<span class={cachedBadge}>Ready</span>
 				{/if}
 			</div>
 			{#if !appState.webgpuAvailable && appState.selectedModel.family !== 'sam1'}

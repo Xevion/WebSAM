@@ -3,7 +3,15 @@ import { untrack } from 'svelte';
 import { appState, resetPrompts, clearEmbedding, pushPromptState } from '$lib/stores/app-state.svelte';
 import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } from '$lib/utils/image';
 import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
-import { drawPointMarker, drawBoxOutline, drawCrosshair, renderImageLayer, renderMaskLayer, renderHoverDeltaLayer, invalidateAllLayers } from '$lib/utils/canvas';
+import {
+	drawPointMarker,
+	drawBoxOutline,
+	drawCrosshair,
+	renderImageLayer,
+	renderMaskLayer,
+	renderHoverDeltaLayer,
+	invalidateAllLayers,
+} from '$lib/utils/canvas';
 import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
 import { errorMessage } from '$lib/utils/error';
@@ -149,9 +157,16 @@ $effect(() => {
 	if (mask && appState.maskViewMode === 'cutout') {
 		// Cutout replaces the image layer
 		const cutoutLayer = renderMaskLayer(
-			mask, appState.maskColor, appState.maskOpacity,
-			'cutout', scale, offsetX, offsetY,
-			img, canvasWidth, canvasHeight,
+			mask,
+			appState.maskColor,
+			appState.maskOpacity,
+			'cutout',
+			scale,
+			offsetX,
+			offsetY,
+			img,
+			canvasWidth,
+			canvasHeight,
 		);
 		if (cutoutLayer) {
 			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -159,9 +174,16 @@ $effect(() => {
 		}
 	} else if (mask) {
 		const maskLayer = renderMaskLayer(
-			mask, appState.maskColor, appState.maskOpacity,
-			appState.maskViewMode, scale, offsetX, offsetY,
-			null, canvasWidth, canvasHeight,
+			mask,
+			appState.maskColor,
+			appState.maskOpacity,
+			appState.maskViewMode,
+			scale,
+			offsetX,
+			offsetY,
+			null,
+			canvasWidth,
+			canvasHeight,
 		);
 		if (maskLayer) ctx.drawImage(maskLayer, 0, 0);
 	}
@@ -169,9 +191,13 @@ $effect(() => {
 	// Layer 3: Hover delta (cached) — always available in point mode
 	if (appState.hoverMask && appState.interactionMode === 'point') {
 		const hoverLayer = renderHoverDeltaLayer(
-			appState.hoverMask, mask,
-			scale, offsetX, offsetY,
-			canvasWidth, canvasHeight,
+			appState.hoverMask,
+			mask,
+			scale,
+			offsetX,
+			offsetY,
+			canvasWidth,
+			canvasHeight,
 		);
 		if (hoverLayer) ctx.drawImage(hoverLayer, 0, 0);
 	}
@@ -199,8 +225,16 @@ $effect(() => {
 		dt.items.add(file);
 		void handleFileDrop(dt.files);
 	}
+	function onAutoEncode() {
+		logger.info('Auto-encode triggered');
+		void runEncoder();
+	}
 	window.addEventListener('websam:load-file', onLoadFile);
-	return () => window.removeEventListener('websam:load-file', onLoadFile);
+	window.addEventListener('websam:auto-encode', onAutoEncode);
+	return () => {
+		window.removeEventListener('websam:load-file', onLoadFile);
+		window.removeEventListener('websam:auto-encode', onAutoEncode);
+	};
 });
 
 // Clear hover state and layer caches when interaction mode or image changes
@@ -241,11 +275,13 @@ $effect(() => {
 				),
 				30_000,
 				'rethreshold',
-			).then((result) => {
-				if (result) appState.maskResult = result;
-			}).catch((err) => {
-				logger.error('Rethreshold failed', { error: errorMessage(err) });
-			});
+			)
+				.then((result) => {
+					if (result) appState.maskResult = result;
+				})
+				.catch((err) => {
+					logger.error('Rethreshold failed', { error: errorMessage(err) });
+				});
 		});
 	}, 150);
 });
@@ -300,7 +336,14 @@ async function runEncoder() {
 }
 
 async function runDecoder(points: Point[], box: Box | null) {
-	if (!appState.embedding || !appState.currentImage) return;
+	if (!appState.embedding) {
+		logger.warn('Decode skipped: no embedding available');
+		return;
+	}
+	if (!appState.currentImage) {
+		logger.warn('Decode skipped: no image loaded');
+		return;
+	}
 
 	logger.debug('Starting decode request', { numPoints: points.length, hasBox: !!box });
 	const myId = ++decodeRequestId;
@@ -354,7 +397,14 @@ function handleCanvasClick(event: MouseEvent) {
 	appState.hoverMask = null;
 	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
 
-	if (!appState.currentImage || !appState.isModelReady) return;
+	if (!appState.currentImage) {
+		logger.debug('Click ignored: no image loaded');
+		return;
+	}
+	if (!appState.isModelReady) {
+		logger.warn('Click ignored: model not ready');
+		return;
+	}
 	if (appState.interactionMode !== 'point') return;
 	if (!canvasEl) return;
 
@@ -373,7 +423,10 @@ function handleCanvasClick(event: MouseEvent) {
 }
 
 function handleContextMenu(event: MouseEvent) {
-	if (!appState.currentImage || !appState.isModelReady) return;
+	if (!appState.currentImage || !appState.isModelReady) {
+		logger.debug('Context menu click ignored: image or model not ready');
+		return;
+	}
 	if (appState.interactionMode !== 'point') return;
 
 	// Prevent browser context menu and handle as negative point click
@@ -416,7 +469,7 @@ function handleMouseMove(event: MouseEvent) {
 		if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
 		hoverDecodeTimer = setTimeout(() => {
 			void runHoverDecode(mousePos.x, mousePos.y);
-		}, 150);
+		}, 80);
 	}
 }
 
@@ -453,6 +506,9 @@ async function runHoverDecode(cx: number, cy: number) {
 }
 
 function handleMouseUp(_event: MouseEvent) {
+	if (isDragging && appState.box && !appState.isModelReady) {
+		logger.warn('Box drag complete but model not ready, decode skipped');
+	}
 	if (isDragging && appState.box && appState.isModelReady) {
 		scheduleSave();
 		// Snapshot the reactive box proxy so it's structured-cloneable for the worker

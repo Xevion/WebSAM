@@ -155,7 +155,7 @@ let cachedHoverFitOffY = -1;
 
 /** Ensure an OffscreenCanvas matches the requested dimensions, creating or resizing as needed. */
 function ensureCanvas(canvas: OffscreenCanvas | null, w: number, h: number): OffscreenCanvas {
-	if (canvas && canvas.width === w && canvas.height === h) return canvas;
+	if (canvas?.width === w && canvas.height === h) return canvas;
 	if (canvas) {
 		canvas.width = w;
 		canvas.height = h;
@@ -311,8 +311,8 @@ export function renderHoverDeltaLayer(
 		let hasAdditions = false;
 		for (let i = 0; i < w * h; i++) {
 			const pi = i * 4;
-			const hoverAlpha = hoverMask.data[pi + 3]!;
-			const committedAlpha = committedMask.data[pi + 3]!;
+			const hoverAlpha = hoverMask.data[pi + 3];
+			const committedAlpha = committedMask.data[pi + 3];
 			if (hoverAlpha > 128 && committedAlpha <= 128) {
 				// Addition pixel — green (#22c55e)
 				deltaData.data[pi] = 0x22;

@@ -1,20 +1,15 @@
 <script lang="ts">
-import { appState, clearEmbedding } from '$lib/stores/app-state.svelte';
-import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
-import * as Comlink from 'comlink';
+import { appState } from '$lib/stores/app-state.svelte';
+import { cancelModelInit, retryModelInit } from '$lib/stores/inference-pipeline.svelte';
 import { formatBytes } from '$lib/inference/models';
 import Progress from '$lib/components/ui/progress.svelte';
 import Button from '$lib/components/ui/button.svelte';
-import Download from '@lucide/svelte/icons/download';
 import X from '@lucide/svelte/icons/x';
 import CheckCircle from '@lucide/svelte/icons/check-circle';
 import AlertCircle from '@lucide/svelte/icons/alert-circle';
 import Loader from '@lucide/svelte/icons/loader-circle';
-import { getLogger } from '@logtape/logtape';
-import { errorMessage } from '$lib/utils/error';
+import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 import { css } from 'styled-system/css';
-
-const logger = getLogger(['websam', 'ui', 'download']);
 
 const progress = $derived(appState.downloadProgress);
 
@@ -25,7 +20,7 @@ const progressPercent = $derived(
 const stageLabel = $derived.by(() => {
 	switch (progress.stage) {
 		case 'idle':
-			return 'Ready to download';
+			return 'Waiting...';
 		case 'downloading-encoder':
 			return 'Downloading encoder...';
 		case 'downloading-decoder':
@@ -35,67 +30,9 @@ const stageLabel = $derived.by(() => {
 		case 'ready':
 			return 'Model ready';
 		case 'error':
-			return progress.error ?? 'Download failed';
+			return progress.error ?? 'Failed';
 	}
 });
-
-async function startDownload() {
-	if (!appState.selectedModel) return;
-
-	// Snapshot reactive proxy so the plain object is structured-cloneable for postMessage
-	const model = $state.snapshot(appState.selectedModel);
-	logger.info('Download initiated', { modelId: model.id, totalSize: model.totalSize });
-
-	const api = getWorkerApi();
-
-	try {
-		appState.isModelReady = false;
-		clearEmbedding();
-
-		await withTimeout(
-			api.downloadAndInit(
-				model,
-				Comlink.proxy((p) => {
-					appState.downloadProgress = p;
-				}),
-			),
-			300_000,
-			'downloadAndInit',
-		);
-		appState.downloadProgress = {
-			stage: 'ready',
-			bytesDownloaded: model.totalSize,
-			totalBytes: model.totalSize,
-		};
-		appState.isModelReady = true;
-		logger.info('Download and init complete', { modelId: model.id });
-	} catch (err) {
-		if (err instanceof DOMException && err.name === 'AbortError') {
-			logger.info('Download aborted by user', { modelId: model.id });
-			appState.downloadProgress = {
-				stage: 'idle',
-				bytesDownloaded: 0,
-				totalBytes: model.totalSize,
-			};
-		} else {
-			logger.error('Download/init failed', {
-				modelId: model.id,
-				error: errorMessage(err),
-			});
-			appState.downloadProgress = {
-				stage: 'error',
-				bytesDownloaded: 0,
-				totalBytes: 0,
-				error: err instanceof Error ? err.message : 'Unknown error',
-			};
-		}
-	}
-}
-
-function cancelDownload() {
-	logger.info('Download cancellation requested');
-	void getWorkerApi().cancelDownload();
-}
 
 const wrapper = css({
 	display: 'flex',
@@ -150,18 +87,14 @@ const actions = css({
 	{/if}
 
 	<div class={actions}>
-		{#if progress.stage === 'idle' && appState.selectedModel}
-			<Button size="sm" onclick={startDownload}>
-				<Download size={14} />
-				Download ({formatBytes(appState.selectedModel.totalSize)})
-			</Button>
-		{:else if progress.stage !== 'idle' && progress.stage !== 'ready' && progress.stage !== 'error'}
-			<Button size="sm" variant="outline" onclick={cancelDownload}>
+		{#if progress.stage !== 'idle' && progress.stage !== 'ready' && progress.stage !== 'error'}
+			<Button size="sm" variant="outline" onclick={cancelModelInit}>
 				<X size={14} />
 				Cancel
 			</Button>
 		{:else if progress.stage === 'error'}
-			<Button size="sm" onclick={startDownload}>
+			<Button size="sm" onclick={retryModelInit}>
+				<RefreshCw size={14} />
 				Retry
 			</Button>
 		{/if}
