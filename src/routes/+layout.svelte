@@ -1,5 +1,7 @@
 <script lang="ts">
 import '../app.css';
+import { setupLogging } from '$lib/logging';
+import { browser } from '$app/environment';
 import { resolve } from '$app/paths';
 import { themeStore } from '$lib/stores/theme.svelte';
 import ThemeToggle from '$lib/components/theme-toggle.svelte';
@@ -11,6 +13,7 @@ import { css } from 'styled-system/css';
 
 let { children }: { children: Snippet } = $props();
 
+if (browser) setupLogging();
 themeStore.init();
 
 const layout = css({

@@ -1,3 +1,7 @@
+import { getLogger } from '@logtape/logtape';
+
+const logger = getLogger(['websam', 'storage', 'opfs']);
+
 const MODEL_DIR = 'models';
 const IMAGES_DIR = 'images';
 
@@ -12,6 +16,7 @@ async function getImagesDir(): Promise<FileSystemDirectoryHandle> {
 }
 
 export async function writeModelFile(filename: string, data: ArrayBuffer): Promise<void> {
+	logger.debug('Writing model file', { filename, sizeBytes: data.byteLength });
 	const dir = await getModelsDir();
 	const fileHandle = await dir.getFileHandle(filename, { create: true });
 	const writable = await fileHandle.createWritable();
@@ -19,6 +24,7 @@ export async function writeModelFile(filename: string, data: ArrayBuffer): Promi
 		await writable.write(data);
 		await writable.close();
 	} catch (err) {
+		logger.error('Model file write failed', { filename, error: String(err) });
 		await writable.abort();
 		throw err;
 	}
@@ -31,6 +37,7 @@ export async function readModelFile(filename: string): Promise<ArrayBuffer | nul
 		const file = await fileHandle.getFile();
 		return file.arrayBuffer();
 	} catch {
+		logger.debug('Model file not found in OPFS', { filename });
 		return null;
 	}
 }
@@ -40,7 +47,7 @@ export async function deleteModelFile(filename: string): Promise<void> {
 		const dir = await getModelsDir();
 		await dir.removeEntry(filename);
 	} catch {
-		// File didn't exist
+		logger.debug('Model file delete (may not exist)', { filename });
 	}
 }
 
@@ -56,6 +63,7 @@ export async function listModelFiles(): Promise<string[]> {
 }
 
 export async function writeCurrentImage(data: ArrayBuffer): Promise<void> {
+	logger.debug('Writing current image', { sizeBytes: data.byteLength });
 	const dir = await getImagesDir();
 	const fileHandle = await dir.getFileHandle('current-image', { create: true });
 	const writable = await fileHandle.createWritable();
@@ -63,6 +71,7 @@ export async function writeCurrentImage(data: ArrayBuffer): Promise<void> {
 		await writable.write(data);
 		await writable.close();
 	} catch (err) {
+		logger.error('Image write failed', { error: String(err) });
 		await writable.abort();
 		throw err;
 	}
@@ -74,6 +83,7 @@ export async function readCurrentImage(): Promise<Blob | null> {
 		const fileHandle = await dir.getFileHandle('current-image');
 		return fileHandle.getFile();
 	} catch {
+		logger.debug('No current image in OPFS');
 		return null;
 	}
 }
@@ -83,6 +93,6 @@ export async function deleteCurrentImage(): Promise<void> {
 		const dir = await getImagesDir();
 		await dir.removeEntry('current-image');
 	} catch {
-		// didn't exist
+		logger.debug('Image delete (may not exist)');
 	}
 }

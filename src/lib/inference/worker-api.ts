@@ -1,5 +1,8 @@
 import * as Comlink from 'comlink';
+import { getLogger } from '@logtape/logtape';
 import type { InferenceWorkerApi } from './worker';
+
+const logger = getLogger(['websam', 'inference', 'worker-proxy']);
 
 let worker: Worker | null = null;
 let proxy: Comlink.Remote<InferenceWorkerApi> | null = null;
@@ -28,19 +31,20 @@ function createWorker(): { worker: Worker; proxy: Comlink.Remote<InferenceWorker
 
 	w.onerror = (event) => {
 		const msg = event.message || 'Worker encountered an unhandled error';
-		console.error('[worker-api] Worker error event:', msg);
+		logger.error('Worker error event', { message: msg });
 		notifyError(new Error(msg));
 		teardown();
 	};
 
 	w.onmessageerror = () => {
 		const msg = 'Worker message deserialization failed';
-		console.error('[worker-api]', msg);
+		logger.error('Worker message deserialization failed');
 		notifyError(new Error(msg));
 		teardown();
 	};
 
 	const p = Comlink.wrap<InferenceWorkerApi>(w);
+	logger.info('Inference worker created');
 	return { worker: w, proxy: p };
 }
 
@@ -48,6 +52,7 @@ function teardown(): void {
 	worker?.terminate();
 	worker = null;
 	proxy = null;
+	logger.debug('Worker torn down');
 }
 
 export function getWorkerApi(): Comlink.Remote<InferenceWorkerApi> {
@@ -74,6 +79,7 @@ export function isWorkerAlive(): boolean {
  */
 export function restartWorker(): Comlink.Remote<InferenceWorkerApi> {
 	teardown();
+	logger.warn('Worker restarted, re-initialization required');
 	return getWorkerApi();
 }
 
@@ -87,6 +93,7 @@ export function restartWorker(): Comlink.Remote<InferenceWorkerApi> {
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
 		const timer = setTimeout(() => {
+			logger.error('Worker call timed out', { label, timeoutMs: ms });
 			reject(new Error(`Worker call '${label}' timed out after ${(ms / 1000).toFixed(0)}s`));
 		}, ms);
 
@@ -97,7 +104,7 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
 			},
 			(err) => {
 				clearTimeout(timer);
-				reject(err);
+				reject(err instanceof Error ? err : new Error(String(err)));
 			},
 		);
 	});
@@ -108,7 +115,7 @@ export async function terminateWorker(): Promise<void> {
 		try {
 			await withTimeout(proxy.destroy(), 5_000, 'destroy');
 		} catch {
-			// worker may already be dead or unresponsive
+			logger.warn('Graceful worker destroy failed, forcing termination');
 		}
 	}
 	teardown();

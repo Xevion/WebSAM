@@ -10,7 +10,11 @@ import X from '@lucide/svelte/icons/x';
 import CheckCircle from '@lucide/svelte/icons/check-circle';
 import AlertCircle from '@lucide/svelte/icons/alert-circle';
 import Loader from '@lucide/svelte/icons/loader-circle';
+import { getLogger } from '@logtape/logtape';
+import { errorMessage } from '$lib/utils/error';
 import { css } from 'styled-system/css';
+
+const logger = getLogger(['websam', 'ui', 'download']);
 
 const progress = $derived(appState.downloadProgress);
 
@@ -40,6 +44,7 @@ async function startDownload() {
 
 	// Snapshot reactive proxy so the plain object is structured-cloneable for postMessage
 	const model = $state.snapshot(appState.selectedModel);
+	logger.info('Download initiated', { modelId: model.id, totalSize: model.totalSize });
 
 	const api = getWorkerApi();
 
@@ -63,14 +68,20 @@ async function startDownload() {
 			totalBytes: model.totalSize,
 		};
 		appState.isModelReady = true;
+		logger.info('Download and init complete', { modelId: model.id });
 	} catch (err) {
 		if (err instanceof DOMException && err.name === 'AbortError') {
+			logger.info('Download aborted by user', { modelId: model.id });
 			appState.downloadProgress = {
 				stage: 'idle',
 				bytesDownloaded: 0,
 				totalBytes: model.totalSize,
 			};
 		} else {
+			logger.error('Download/init failed', {
+				modelId: model.id,
+				error: errorMessage(err),
+			});
 			appState.downloadProgress = {
 				stage: 'error',
 				bytesDownloaded: 0,
@@ -82,7 +93,8 @@ async function startDownload() {
 }
 
 function cancelDownload() {
-	getWorkerApi().cancelDownload();
+	logger.info('Download cancellation requested');
+	void getWorkerApi().cancelDownload();
 }
 
 const wrapper = css({

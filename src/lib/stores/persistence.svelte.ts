@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { getLogger } from '@logtape/logtape';
 import { appState } from './app-state.svelte';
 import {
 	getLastSelectedModelId,
@@ -10,6 +11,8 @@ import { writeCurrentImage, readCurrentImage, deleteCurrentImage } from '$lib/st
 import { MODEL_REGISTRY } from '$lib/inference/models';
 import { loadImageFromFile } from '$lib/utils/image';
 
+const logger = getLogger(['websam', 'persistence']);
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function scheduleSave(): void {
@@ -19,6 +22,7 @@ export function scheduleSave(): void {
 }
 
 async function saveSession(): Promise<void> {
+	logger.debug('Saving session');
 	await setSessionState(
 		$state.snapshot({
 			points: appState.points,
@@ -38,11 +42,13 @@ async function saveSession(): Promise<void> {
 
 export async function restoreSession(): Promise<void> {
 	if (!browser) return;
+	logger.info('Restoring session');
 
 	const lastModelId = await getLastSelectedModelId();
 	if (lastModelId) {
 		const model = MODEL_REGISTRY.find((m) => m.id === lastModelId);
 		if (model) appState.selectedModel = model;
+		logger.info('Model selection restored', { modelId: lastModelId, found: !!model });
 	}
 
 	const session = await getSessionState();
@@ -54,6 +60,11 @@ export async function restoreSession(): Promise<void> {
 	appState.interactionMode = session.interactionMode;
 	appState.points = session.points;
 	appState.box = session.box;
+	logger.info('Session state restored', {
+		interactionMode: session.interactionMode,
+		numPoints: session.points.length,
+		hasImage: session.hasImage,
+	});
 
 	if (session.hasImage) {
 		const blob = await readCurrentImage();
@@ -61,7 +72,9 @@ export async function restoreSession(): Promise<void> {
 			const file = new File([blob], 'restored-image', { type: blob.type });
 			try {
 				appState.currentImage = await loadImageFromFile(file);
+				logger.debug('Image restored from OPFS');
 			} catch {
+				logger.warn('Failed to restore persisted image, clearing stale entry');
 				await deleteCurrentImage();
 			}
 		}

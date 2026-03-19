@@ -23,16 +23,7 @@ interface Props {
 	icon?: Snippet;
 }
 
-const {
-	items,
-	value,
-	onValueChange,
-	placeholder = 'Select...',
-	name,
-	id,
-	triggerClass,
-	icon,
-}: Props = $props();
+const { items, value, onValueChange, placeholder = 'Select...', name, id, triggerClass, icon }: Props = $props();
 
 const collection = $derived(createListCollection({ items }));
 

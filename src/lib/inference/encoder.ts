@@ -1,5 +1,8 @@
+import { getLogger } from '@logtape/logtape';
 import { getOrt, type OnnxSession } from './session';
 import type { ImageEmbedding, RawImageData } from './types';
+
+const logger = getLogger(['websam', 'inference', 'encoder']);
 
 /** ImageNet normalization constants used by both SAM1 and SAM2 */
 const IMAGE_MEAN = [0.485, 0.456, 0.406] as const;
@@ -22,6 +25,7 @@ function preprocessImage(imageData: RawImageData): Float32Array {
 	const scale = MODEL_INPUT_SIZE / Math.max(w, h);
 	const newW = Math.round(w * scale);
 	const newH = Math.round(h * scale);
+	logger.debug('Preprocessing image', { width: w, height: h, scaledWidth: newW, scaledHeight: newH });
 
 	// Draw source pixels onto an OffscreenCanvas at original size, then resize
 	const srcCanvas = new OffscreenCanvas(w, h);
@@ -65,6 +69,8 @@ function preprocessImage(imageData: RawImageData): Float32Array {
 export async function encodeImage(session: OnnxSession, imageData: RawImageData): Promise<ImageEmbedding> {
 	const ort = await getOrt();
 	const family = session.model.family;
+	logger.debug('Starting encode', { family });
+	const t0 = performance.now();
 	const inputTensor = preprocessImage(imageData);
 
 	if (family === 'sam1') {
@@ -79,9 +85,11 @@ export async function encodeImage(session: OnnxSession, imageData: RawImageData)
 		try {
 			results = await session.encoderSession.run(feeds);
 		} catch (err) {
+			logger.error('SAM1 encoder inference failed', { error: String(err) });
 			throw new Error('SAM1 encoder inference failed', { cause: err });
 		}
 
+		logger.info('SAM1 encode complete', { elapsed: Math.round(performance.now() - t0) });
 		return {
 			type: 'sam1',
 			imageEmbeddings: results.image_embeddings.data as Float32Array,
@@ -100,9 +108,11 @@ export async function encodeImage(session: OnnxSession, imageData: RawImageData)
 	try {
 		results = await session.encoderSession.run(feeds);
 	} catch (err) {
+		logger.error('SAM2 encoder inference failed', { error: String(err) });
 		throw new Error('SAM2 encoder inference failed', { cause: err });
 	}
 
+	logger.info('SAM2 encode complete', { elapsed: Math.round(performance.now() - t0) });
 	return {
 		type: 'sam2',
 		imageEmbed: results.image_embed.data as Float32Array,

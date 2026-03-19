@@ -9,7 +9,7 @@ let modelCached = $state(false);
 $effect(() => {
 	const modelId = appState.selectedModel?.id;
 	if (modelId) {
-		isModelCached(modelId).then((cached) => {
+		void isModelCached(modelId).then((cached) => {
 			modelCached = cached;
 		});
 	} else {

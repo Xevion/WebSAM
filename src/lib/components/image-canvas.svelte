@@ -6,13 +6,17 @@ import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
 import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
+import { errorMessage } from '$lib/utils/error';
 import type { PanzoomObject } from '@panzoom/panzoom';
 import Upload from '@lucide/svelte/icons/upload';
 import ImageIcon from '@lucide/svelte/icons/image';
 import ZoomIn from '@lucide/svelte/icons/zoom-in';
 import ZoomOut from '@lucide/svelte/icons/zoom-out';
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+import { getLogger } from '@logtape/logtape';
 import { css, cx } from 'styled-system/css';
+
+const logger = getLogger(['websam', 'ui', 'canvas']);
 
 let canvasEl: HTMLCanvasElement | undefined = $state();
 let containerEl: HTMLDivElement | undefined = $state();
@@ -53,7 +57,7 @@ $effect(() => {
 	let instance: PanzoomObject | undefined;
 
 	// Dynamic import avoids SSR evaluation of this DOM-only CJS library
-	import('@panzoom/panzoom').then(({ default: Panzoom }) => {
+	void import('@panzoom/panzoom').then(({ default: Panzoom }) => {
 		if (!el.isConnected) return;
 
 		instance = Panzoom(el, {
@@ -227,11 +231,17 @@ async function handleFileDrop(files: FileList | null) {
 		clearEmbedding();
 		await persistImage(file);
 		scheduleSave();
+		logger.info('Image loaded', {
+			fileName: file.name,
+			width: appState.currentImage?.naturalWidth,
+			height: appState.currentImage?.naturalHeight,
+		});
 
 		if (appState.isModelReady) {
 			await runEncoder();
 		}
 	} catch {
+		logger.error('Failed to load image', { fileName: file?.name });
 		appState.currentImage = null;
 	}
 }
@@ -239,6 +249,7 @@ async function handleFileDrop(files: FileList | null) {
 async function runEncoder() {
 	if (!appState.currentImage) return;
 
+	logger.info('Starting image encode');
 	const api = getWorkerApi();
 	appState.inferenceProgress = { stage: 'encoding' };
 	const start = performance.now();
@@ -246,8 +257,10 @@ async function runEncoder() {
 		const rawData = imageToRawData(appState.currentImage);
 		appState.embedding = await withTimeout(api.encode(rawData), 120_000, 'encode');
 		const elapsed = Math.round(performance.now() - start);
+		logger.info('Image encoded', { elapsed });
 		appState.inferenceProgress = { stage: 'complete', timeMs: elapsed };
 	} catch (err) {
+		logger.error('Image encoding failed', { error: errorMessage(err) });
 		appState.inferenceProgress = {
 			stage: 'error',
 			error: err instanceof Error ? err.message : 'Encoding failed',
@@ -258,6 +271,7 @@ async function runEncoder() {
 async function runDecoder(points: Point[], box: Box | null) {
 	if (!appState.embedding || !appState.currentImage) return;
 
+	logger.debug('Starting decode request', { numPoints: points.length, hasBox: !!box });
 	const myId = ++decodeRequestId;
 	const api = getWorkerApi();
 	appState.inferenceProgress = { stage: 'decoding' };
@@ -288,11 +302,16 @@ async function runDecoder(points: Point[], box: Box | null) {
 			60_000,
 			'decode',
 		);
-		if (myId !== decodeRequestId) return; // stale, discard
+		if (myId !== decodeRequestId) {
+			logger.debug('Stale decode result discarded');
+			return;
+		}
 		const elapsed = Math.round(performance.now() - start);
+		logger.info('Decode round-trip complete', { elapsed });
 		appState.maskResult = result;
 		appState.inferenceProgress = { stage: 'complete', timeMs: elapsed };
 	} catch (err) {
+		logger.error('Decode failed', { error: errorMessage(err) });
 		appState.inferenceProgress = {
 			stage: 'error',
 			error: err instanceof Error ? err.message : 'Decoding failed',
@@ -397,6 +416,7 @@ async function runHoverDecode(cx: number, cy: number) {
 		if (myId !== hoverRequestId) return; // stale, discard
 		appState.hoverMask = result.masks[result.selectedIndex] ?? null;
 	} catch {
+		logger.debug('Hover decode failed');
 		appState.hoverMask = null;
 	}
 }

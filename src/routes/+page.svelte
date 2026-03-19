@@ -6,6 +6,8 @@ import InferenceStatus from '$lib/components/inference-status.svelte';
 import ImageCanvas from '$lib/components/image-canvas.svelte';
 import Toolbar from '$lib/components/toolbar.svelte';
 import MaskControls from '$lib/components/mask-controls.svelte';
+import { getLogger } from '@logtape/logtape';
+import { errorMessage } from '$lib/utils/error';
 import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
 import { initShortcuts } from '$lib/stores/shortcuts.svelte';
@@ -13,16 +15,19 @@ import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onWorkerError } from '$lib/inference/worker-api';
 import { onMount } from 'svelte';
 
+const logger = getLogger(['websam', 'app']);
+
 if (browser) {
 	appState.webgpuAvailable = 'gpu' in navigator;
+	logger.info('WebGPU availability', { available: 'gpu' in navigator });
 }
 
 onMount(() => {
 	const cleanup = initShortcuts();
-	restoreSession().catch((err) => console.error('Session restore failed:', err));
+	restoreSession().catch((err: unknown) => logger.error('Session restore failed', { error: errorMessage(err) }));
 
-	const unsubWorkerError = onWorkerError((err) => {
-		console.error('[page] Worker crashed:', err.message);
+	const unsubWorkerError = onWorkerError((err: Error) => {
+		logger.error('Inference worker crashed', { error: err.message });
 		appState.isModelReady = false;
 		appState.inferenceProgress = {
 			stage: 'error',

@@ -1,8 +1,9 @@
 import { maskToBlob, createCutout } from './image';
 import { appState } from '$lib/stores/app-state.svelte';
+import type { saveAs as SaveAsFn } from 'file-saver';
 
 // file-saver is CJS -- dynamic import avoids SSR prerender failures
-async function getSaveAs(): Promise<typeof import('file-saver').saveAs> {
+async function getSaveAs(): Promise<typeof SaveAsFn> {
 	const mod = await import('file-saver');
 	return mod.default?.saveAs ?? mod.saveAs;
 }

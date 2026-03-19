@@ -1,5 +1,8 @@
 import type { InferenceSession } from 'onnxruntime-web';
+import { getLogger } from '@logtape/logtape';
 import type { ModelInfo } from './types';
+
+const logger = getLogger(['websam', 'inference', 'session']);
 
 /**
  * Lazy-loaded ORT module. We dynamically import from 'onnxruntime-web/webgpu'
@@ -22,6 +25,7 @@ export async function getOrt(): Promise<OrtModule> {
 	if (ortModule) return ortModule;
 	// Import from /webgpu to include both WebGPU + WASM EPs
 	ortModule = await _loadOrtModule();
+	logger.info('ONNX Runtime module loaded');
 	return ortModule;
 }
 
@@ -51,6 +55,7 @@ async function configureOrt(useWebGPU: boolean): Promise<void> {
 	} else {
 		ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
 	}
+	logger.debug('ORT configured', { useWebGPU, wasmThreads: useWebGPU ? 1 : navigator.hardwareConcurrency || 4 });
 }
 
 /**
@@ -58,6 +63,11 @@ async function configureOrt(useWebGPU: boolean): Promise<void> {
  * Selects WebGPU EP for models that require it, WASM for others.
  */
 export async function createSession(model: ModelInfo, buffers: ModelBuffers): Promise<OnnxSession> {
+	logger.info('Creating ONNX sessions', {
+		modelId: model.id,
+		family: model.family,
+		backend: model.requiresWebGPU ? 'webgpu' : 'wasm',
+	});
 	const ort = await getOrt();
 	await configureOrt(model.requiresWebGPU);
 
@@ -85,9 +95,12 @@ export async function createSession(model: ModelInfo, buffers: ModelBuffers): Pr
 	// WebGPU EP only allows one session to be created at a time,
 	// so sessions must be created sequentially (not Promise.all)
 	const encoderSession = await ort.InferenceSession.create(buffers.encoderBuffer, encoderOptions);
+	logger.debug('Encoder session created', { modelId: model.id });
 	const decoderSession = await ort.InferenceSession.create(buffers.decoderBuffer, decoderOptions);
+	logger.debug('Decoder session created', { modelId: model.id });
 
 	currentSession = { encoderSession, decoderSession, model };
+	logger.info('ONNX sessions ready', { modelId: model.id });
 	return currentSession;
 }
 
@@ -100,7 +113,9 @@ export function getSession(): OnnxSession | null {
  */
 export async function destroySession(): Promise<void> {
 	if (currentSession) {
+		logger.debug('Destroying ONNX sessions');
 		await Promise.all([currentSession.encoderSession.release(), currentSession.decoderSession.release()]);
 		currentSession = null;
+		logger.debug('ONNX sessions released');
 	}
 }

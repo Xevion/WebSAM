@@ -7,9 +7,12 @@ import type {
 	InferenceProgress,
 	EmbeddingInfo,
 } from '$lib/inference/types';
+import { getLogger } from '@logtape/logtape';
 import { promptHistory } from './prompt-history.svelte';
 import { scheduleSave } from './persistence.svelte';
 import { deleteCurrentImage } from '$lib/storage/opfs';
+
+const logger = getLogger(['websam', 'app', 'state']);
 
 export const appState = $state({
 	selectedModel: null as ModelInfo | null,
@@ -49,6 +52,7 @@ export function resetPrompts(): void {
 	appState.box = null;
 	appState.maskResult = null;
 	appState.inferenceProgress = { stage: 'idle' };
+	logger.debug('Prompts reset');
 	scheduleSave();
 }
 
@@ -67,6 +71,7 @@ export function undoLastPrompt(): void {
 	promptHistory.pushRedo(currentState);
 	appState.points = prevState.points;
 	appState.box = prevState.box;
+	logger.debug('Prompt undone', { restoredPoints: prevState.points.length });
 	requestDecode();
 }
 
@@ -77,6 +82,7 @@ export function redoLastPrompt(): void {
 	promptHistory.pushUndoOnly(currentState);
 	appState.points = nextState.points;
 	appState.box = nextState.box;
+	logger.debug('Prompt redone', { restoredPoints: nextState.points.length });
 	requestDecode();
 }
 
@@ -85,6 +91,7 @@ export function requestDecode() {
 }
 
 export function clearImage(): void {
+	logger.info('Image cleared');
 	appState.currentImage = null;
 	appState.imageFile = null;
 	appState.embedding = null;

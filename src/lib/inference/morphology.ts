@@ -5,11 +5,11 @@ export function erode(alpha: Uint8ClampedArray, width: number, height: number): 
 		for (let x = 1; x < width - 1; x++) {
 			const idx = y * width + x;
 			if (
-				alpha[idx]! > 128 &&
-				alpha[idx - 1]! > 128 &&
-				alpha[idx + 1]! > 128 &&
-				alpha[idx - width]! > 128 &&
-				alpha[idx + width]! > 128
+				alpha[idx] > 128 &&
+				alpha[idx - 1] > 128 &&
+				alpha[idx + 1] > 128 &&
+				alpha[idx - width] > 128 &&
+				alpha[idx + width] > 128
 			) {
 				result[idx] = 255;
 			}
@@ -25,11 +25,11 @@ export function dilate(alpha: Uint8ClampedArray, width: number, height: number):
 		for (let x = 1; x < width - 1; x++) {
 			const idx = y * width + x;
 			if (
-				alpha[idx]! > 128 ||
-				alpha[idx - 1]! > 128 ||
-				alpha[idx + 1]! > 128 ||
-				alpha[idx - width]! > 128 ||
-				alpha[idx + width]! > 128
+				alpha[idx] > 128 ||
+				alpha[idx - 1] > 128 ||
+				alpha[idx + 1] > 128 ||
+				alpha[idx - width] > 128 ||
+				alpha[idx + width] > 128
 			) {
 				result[idx] = 255;
 			}
@@ -39,12 +39,7 @@ export function dilate(alpha: Uint8ClampedArray, width: number, height: number):
 }
 
 // Opening (erode->dilate) removes small noise; closing (dilate->erode) fills small holes
-export function smoothMask(
-	alpha: Uint8ClampedArray,
-	width: number,
-	height: number,
-	passes: number = 1,
-): Uint8ClampedArray {
+export function smoothMask(alpha: Uint8ClampedArray, width: number, height: number, passes = 1): Uint8ClampedArray {
 	let result = alpha;
 	for (let i = 0; i < passes; i++) {
 		result = erode(result, width, height);

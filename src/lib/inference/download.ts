@@ -1,6 +1,9 @@
+import { getLogger } from '@logtape/logtape';
 import type { ModelBuffers } from './session';
 import type { DownloadProgress, ModelInfo } from './types';
 import { getCachedModelMeta } from '../storage/metadata';
+
+const logger = getLogger(['websam', 'inference', 'download']);
 
 /**
  * Fetches a single model file with streaming progress.
@@ -15,6 +18,7 @@ async function fetchWithProgress(
 	const response = await fetch(url, { signal });
 
 	if (!response.ok) {
+		logger.error('Download HTTP error', { url, status: response.status, statusText: response.statusText });
 		throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
 	}
 
@@ -23,6 +27,7 @@ async function fetchWithProgress(
 
 	if (!reader) {
 		// Fallback: no streaming (e.g., some browsers/servers)
+		logger.warn('Response not streamable, using arrayBuffer fallback', { url });
 		const buffer = await response.arrayBuffer();
 		onProgress(buffer.byteLength);
 		return buffer;
@@ -78,6 +83,7 @@ export async function downloadModel(
 	let encoderDownloaded = 0;
 	let decoderDownloaded = 0;
 
+	logger.info('Downloading encoder', { modelId: model.id, url: model.encoderUrl, expectedSize: model.encoderSize });
 	onProgress({
 		stage: 'downloading-encoder',
 		bytesDownloaded: 0,
@@ -98,6 +104,7 @@ export async function downloadModel(
 		signal,
 	);
 
+	logger.info('Downloading decoder', { modelId: model.id, url: model.decoderUrl, expectedSize: model.decoderSize });
 	onProgress({
 		stage: 'downloading-decoder',
 		bytesDownloaded: encoderDownloaded,
@@ -118,6 +125,7 @@ export async function downloadModel(
 		signal,
 	);
 
+	logger.info('Download complete, initializing', { modelId: model.id, totalSize: model.totalSize });
 	onProgress({
 		stage: 'initializing',
 		bytesDownloaded: model.totalSize,

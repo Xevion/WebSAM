@@ -1,8 +1,11 @@
 import type { Tensor } from 'onnxruntime-web';
+import { getLogger } from '@logtape/logtape';
 import { getOrt, type OnnxSession, type OrtModule } from './session';
 import type { ImageEmbedding, PromptInput, MaskResult } from './types';
 import { imageToModelCoords } from '$lib/utils/image';
 import { smoothMask } from './morphology';
+
+const logger = getLogger(['websam', 'inference', 'decoder']);
 
 export interface DecoderOptions {
 	/** Previous low-res mask for iterative refinement [1, 1, 256, 256]. Pass null for first decode. */
@@ -41,6 +44,7 @@ export async function decodeMask(
 	const ort = await getOrt();
 	const { outputWidth, outputHeight } = options;
 	const family = session.model.family;
+	const t0 = performance.now();
 
 	// Build point/label arrays from prompt
 	const points: [number, number][] = [];
@@ -63,10 +67,15 @@ export async function decodeMask(
 
 	// Must have at least one prompt point
 	if (points.length === 0) {
+		logger.error('Decoder requires at least one prompt', {
+			pointCount: prompt.points?.length ?? 0,
+			hasBox: !!prompt.box,
+		});
 		throw new Error('Decoder requires at least one point or box prompt');
 	}
 
 	const numPoints = points.length;
+	logger.debug('Starting decode', { family, numPoints, hasBox: !!prompt.box, hasMaskInput: !!options.maskInput });
 
 	let rawMasks: Float32Array;
 	let rawScores: Float32Array;
@@ -74,24 +83,44 @@ export async function decodeMask(
 	let maskHeight: number;
 
 	if (family === 'sam1' && embedding.type === 'sam1') {
+		logger.debug('Running SAM1 decoder', { numPoints });
 		const sam1Result = await runSam1Decoder(ort, session, embedding, points, labels, numPoints);
 		rawMasks = sam1Result.masks;
 		rawScores = sam1Result.scores;
 		maskWidth = sam1Result.maskWidth;
 		maskHeight = sam1Result.maskHeight;
 	} else if ((family === 'sam2' || family === 'sam2.1') && embedding.type === 'sam2') {
+		logger.debug('Running SAM2 decoder', { numPoints, hasMaskInput: !!options.maskInput });
 		const sam2Result = await runSam2Decoder(ort, session, embedding, points, labels, numPoints, options.maskInput);
 		rawMasks = sam2Result.masks;
 		rawScores = sam2Result.scores;
 		maskWidth = sam2Result.maskWidth;
 		maskHeight = sam2Result.maskHeight;
 	} else {
+		logger.error('Embedding/family mismatch', { embeddingType: embedding.type, modelFamily: family });
 		throw new Error(`Mismatched embedding type '${embedding.type}' for model family '${family}'`);
 	}
 
 	// Post-process: resize low-res masks to output dimensions and create ImageData
 	const smoothPasses = options.smoothPasses ?? 0;
-	return postProcessMasks(rawMasks, rawScores, maskWidth, maskHeight, outputWidth, outputHeight, 0.0, smoothPasses);
+	const result = postProcessMasks(
+		rawMasks,
+		rawScores,
+		maskWidth,
+		maskHeight,
+		outputWidth,
+		outputHeight,
+		0.0,
+		smoothPasses,
+	);
+	logger.info('Decode complete', {
+		family,
+		elapsed: Math.round(performance.now() - t0),
+		numPoints,
+		outputWidth,
+		outputHeight,
+	});
+	return result;
 }
 
 async function runSam1Decoder(
@@ -130,6 +159,7 @@ async function runSam1Decoder(
 	try {
 		results = await session.decoderSession.run(feeds);
 	} catch (err) {
+		logger.error('SAM1 decoder inference failed', { numPoints, error: String(err) });
 		throw new Error('SAM1 decoder inference failed', { cause: err });
 	}
 
@@ -191,6 +221,7 @@ async function runSam2Decoder(
 	try {
 		results = await session.decoderSession.run(feeds);
 	} catch (err) {
+		logger.error('SAM2 decoder inference failed', { numPoints, error: String(err) });
 		throw new Error('SAM2 decoder inference failed', { cause: err });
 	}
 
@@ -220,8 +251,8 @@ function postProcessMasks(
 	maskHeight: number,
 	outputWidth: number,
 	outputHeight: number,
-	threshold: number = 0.0,
-	smoothPasses: number = 0,
+	threshold = 0.0,
+	smoothPasses = 0,
 ): MaskResult {
 	const scores: number[] = [];
 	const masks: ImageData[] = [];
@@ -282,7 +313,7 @@ function postProcessMasks(
 			}
 			const smoothed = smoothMask(alphaChannel, outputWidth, outputHeight, smoothPasses);
 			for (let j = 0; j < outputPixels; j++) {
-				const v = smoothed[j]!;
+				const v = smoothed[j];
 				data[j * 4] = v;
 				data[j * 4 + 1] = v;
 				data[j * 4 + 2] = v;
@@ -364,7 +395,7 @@ export function reprocessMasks(
 		const data = imageData.data;
 
 		for (let j = 0; j < outputPixels; j++) {
-			const inMask = rawLogits[logitOffset + j]! > threshold;
+			const inMask = rawLogits[logitOffset + j] > threshold;
 			const v = inMask ? 255 : 0;
 			data[j * 4] = v;
 			data[j * 4 + 1] = v;
@@ -379,7 +410,7 @@ export function reprocessMasks(
 			}
 			const smoothed = smoothMask(alphaChannel, outputWidth, outputHeight, smoothPasses);
 			for (let j = 0; j < outputPixels; j++) {
-				const v = smoothed[j]!;
+				const v = smoothed[j];
 				data[j * 4] = v;
 				data[j * 4 + 1] = v;
 				data[j * 4 + 2] = v;

@@ -4,7 +4,7 @@ import { isoLines } from 'marching-squares';
  * Extract contour polygons from a binary mask using marching squares.
  * Returns an array of polygons, where each polygon is an array of [x, y] points.
  */
-export function extractContours(mask: ImageData, threshold: number = 128): [number, number][][] {
+export function extractContours(mask: ImageData, threshold = 128): [number, number][][] {
 	const { width, height, data } = mask;
 
 	// marching-squares expects a 2D array [rows][cols] of scalar values;
@@ -13,7 +13,7 @@ export function extractContours(mask: ImageData, threshold: number = 128): [numb
 	for (let y = 0; y < height; y++) {
 		const row: number[] = [];
 		for (let x = 0; x < width; x++) {
-			row.push(data[(y * width + x) * 4 + 3]!);
+			row.push(data[(y * width + x) * 4 + 3]);
 		}
 		grid.push(row);
 	}

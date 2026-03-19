@@ -44,6 +44,7 @@
 	},
 	"dependencies": {
 		"@ark-ui/svelte": "^5.19.1",
+		"@logtape/logtape": "^2.0.4",
 		"@panzoom/panzoom": "^4.6.1",
 		"@ramstack/hotkey": "^1.1.1",
 		"browser-image-compression": "^2.0.2",

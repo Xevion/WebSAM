@@ -30,7 +30,7 @@ function createPromptHistory() {
 
 		undo(): PromptSnapshot | undefined {
 			if (undoStack.length === 0) return undefined;
-			const state = undoStack[undoStack.length - 1]!;
+			const state = undoStack[undoStack.length - 1];
 			undoStack = undoStack.slice(0, -1);
 			return state;
 		},
@@ -41,7 +41,7 @@ function createPromptHistory() {
 
 		redo(): PromptSnapshot | undefined {
 			if (redoStack.length === 0) return undefined;
-			const state = redoStack[redoStack.length - 1]!;
+			const state = redoStack[redoStack.length - 1];
 			redoStack = redoStack.slice(0, -1);
 			return state;
 		},
