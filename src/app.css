@@ -1,0 +1,11 @@
+@layer reset, base, tokens, recipes, utilities;
+
+.theme-transitioning * {
+	view-transition-name: none !important;
+}
+
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation: none !important;
+}
