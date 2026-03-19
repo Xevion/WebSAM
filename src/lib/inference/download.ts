@@ -2,7 +2,8 @@ import type { DownloadProgress, ModelInfo } from './types';
 
 /**
  * Simulates downloading model files with progress updates.
- * In production, this would fetch ONNX files and cache them in IndexedDB.
+ * In production, this would fetch ONNX files and cache them
+ * using OPFS for large models (SAM2, >50 MB) or Cache API for small ones (SlimSAM).
  */
 export async function downloadModel(
 	model: ModelInfo,

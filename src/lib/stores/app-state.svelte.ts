@@ -1,4 +1,12 @@
-import type { ModelInfo, Point, Box, MaskResult, DownloadProgress, InferenceProgress } from '$lib/inference/types';
+import type {
+	ModelInfo,
+	Point,
+	Box,
+	MaskResult,
+	DownloadProgress,
+	InferenceProgress,
+	ImageEmbedding,
+} from '$lib/inference/types';
 
 export const appState = $state({
 	selectedModel: null as ModelInfo | null,
@@ -11,6 +19,9 @@ export const appState = $state({
 	interactionMode: 'point' as 'point' | 'box' | 'everything',
 	points: [] as Point[],
 	box: null as Box | null,
+
+	/** Cached image embedding from the encoder, cleared on image change. */
+	embedding: null as ImageEmbedding | null,
 
 	maskResult: null as MaskResult | null,
 	inferenceProgress: { stage: 'idle' } as InferenceProgress,
@@ -26,6 +37,10 @@ export function resetPrompts(): void {
 	appState.box = null;
 	appState.maskResult = null;
 	appState.inferenceProgress = { stage: 'idle' };
+}
+
+export function clearEmbedding(): void {
+	appState.embedding = null;
 }
 
 export function undoLastPoint(): void {

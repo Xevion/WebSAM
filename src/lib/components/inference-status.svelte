@@ -83,10 +83,8 @@ const sectionLabel = css({
 		<span>{stageLabel}</span>
 	</div>
 
-	{#if inference.stage === 'encoding'}
-		<Progress value={50} label="Encoding" />
-	{:else if inference.stage === 'decoding'}
-		<Progress value={80} label="Decoding" />
+	{#if inference.stage === 'encoding' || inference.stage === 'decoding'}
+		<Progress value={null} label={inference.stage === 'encoding' ? 'Encoding' : 'Decoding'} />
 	{/if}
 
 	<div class={gpuBadge}>

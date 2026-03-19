@@ -3,8 +3,6 @@ import { appState, resetPrompts, undoLastPoint } from '$lib/stores/app-state.sve
 import ToggleGroupComponent from '$lib/components/ui/toggle-group.svelte';
 import Tooltip from '$lib/components/ui/tooltip.svelte';
 import Button from '$lib/components/ui/button.svelte';
-import MousePointer from '@lucide/svelte/icons/mouse-pointer';
-import Square from '@lucide/svelte/icons/square';
 import Sparkles from '@lucide/svelte/icons/sparkles';
 import Undo2 from '@lucide/svelte/icons/undo-2';
 import Trash2 from '@lucide/svelte/icons/trash-2';

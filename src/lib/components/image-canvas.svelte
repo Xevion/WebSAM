@@ -1,12 +1,11 @@
 <script lang="ts">
-import { appState, resetPrompts } from '$lib/stores/app-state.svelte';
+import { appState, resetPrompts, clearEmbedding } from '$lib/stores/app-state.svelte';
 import { loadImageFromFile, computeFit, canvasToImageCoords } from '$lib/utils/image';
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
 import { decodeMask } from '$lib/inference/decoder';
 import { encodeImage } from '$lib/inference/encoder';
 import { getSession } from '$lib/inference/session';
 import type { Point, Box } from '$lib/inference/types';
-import type { ImageEmbedding } from '$lib/inference/encoder';
 import Upload from '@lucide/svelte/icons/upload';
 import ImageIcon from '@lucide/svelte/icons/image';
 import { css } from 'styled-system/css';
@@ -17,7 +16,6 @@ let isDragging = $state(false);
 let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
-let embedding: ImageEmbedding | null = $state(null);
 
 const canvasWidth = $derived(containerEl?.clientWidth ?? 800);
 const canvasHeight = $derived(containerEl?.clientHeight ?? 600);
@@ -95,7 +93,7 @@ async function handleFileDrop(files: FileList | null) {
 	try {
 		appState.currentImage = await loadImageFromFile(file);
 		resetPrompts();
-		embedding = null;
+		clearEmbedding();
 
 		if (appState.isModelReady) {
 			await runEncoder();
@@ -112,8 +110,9 @@ async function runEncoder() {
 	appState.inferenceProgress = { stage: 'encoding' };
 	const start = performance.now();
 	try {
-		embedding = await encodeImage(session, appState.currentImage);
-		appState.inferenceProgress = { stage: 'idle' };
+		appState.embedding = await encodeImage(session, appState.currentImage);
+		const elapsed = Math.round(performance.now() - start);
+		appState.inferenceProgress = { stage: 'complete', timeMs: elapsed };
 	} catch (err) {
 		appState.inferenceProgress = {
 			stage: 'error',
@@ -124,18 +123,33 @@ async function runEncoder() {
 
 async function runDecoder(points: Point[], box: Box | null) {
 	const session = getSession();
-	if (!session || !embedding || !appState.currentImage) return;
+	if (!session || !appState.embedding || !appState.currentImage) return;
 
 	appState.inferenceProgress = { stage: 'decoding' };
 	const start = performance.now();
 
 	try {
+		const previousMask = appState.maskResult?.lowResMasks ?? null;
+		// For refinement, extract the selected mask channel from low_res_masks
+		let maskInput: Float32Array | null = null;
+		if (previousMask && appState.maskResult) {
+			const idx = appState.maskResult.selectedIndex;
+			maskInput = new Float32Array(256 * 256);
+			maskInput.set(previousMask.subarray(idx * 256 * 256, (idx + 1) * 256 * 256));
+		}
+
 		const result = await decodeMask(
 			session,
-			embedding,
-			{ points: points.length > 0 ? points : undefined, box: box ?? undefined },
-			appState.currentImage.naturalWidth,
-			appState.currentImage.naturalHeight,
+			appState.embedding,
+			{
+				points: points.length > 0 ? points : undefined,
+				box: box ?? undefined,
+			},
+			{
+				maskInput,
+				outputWidth: appState.currentImage.naturalWidth,
+				outputHeight: appState.currentImage.naturalHeight,
+			},
 		);
 		const elapsed = Math.round(performance.now() - start);
 		appState.maskResult = result;
@@ -150,6 +164,7 @@ async function runDecoder(points: Point[], box: Box | null) {
 
 function handleCanvasClick(event: MouseEvent) {
 	if (!appState.currentImage || !appState.isModelReady) return;
+	if (appState.interactionMode !== 'point') return;
 
 	const rect = canvasEl?.getBoundingClientRect();
 	if (!rect) return;
@@ -158,14 +173,22 @@ function handleCanvasClick(event: MouseEvent) {
 	const cy = event.clientY - rect.top;
 	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
 
-	if (x < 0 || y < 0 || x > appState.currentImage.naturalWidth || y > appState.currentImage.naturalHeight) return;
+	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) return;
 
-	if (appState.interactionMode === 'point') {
-		const label: 1 | 0 = event.shiftKey ? 0 : 1;
-		const newPoints = [...appState.points, { x, y, label }];
-		appState.points = newPoints;
-		void runDecoder(newPoints, null);
-	}
+	// Right-click or shift+click = negative (label 0), left-click = positive (label 1)
+	const label: 0 | 1 = event.button === 2 || event.shiftKey ? 0 : 1;
+	const newPoints = [...appState.points, { x, y, label }];
+	appState.points = newPoints;
+	void runDecoder(newPoints, null);
+}
+
+function handleContextMenu(event: MouseEvent) {
+	if (!appState.currentImage || !appState.isModelReady) return;
+	if (appState.interactionMode !== 'point') return;
+
+	// Prevent browser context menu and handle as negative point click
+	event.preventDefault();
+	handleCanvasClick(event);
 }
 
 function handleMouseDown(event: MouseEvent) {
@@ -298,6 +321,7 @@ const cursorBox = css({
 			bind:this={canvasEl}
 			class={`${canvasStyle} ${appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : ''}`}
 			onclick={handleCanvasClick}
+			oncontextmenu={handleContextMenu}
 			onmousedown={handleMouseDown}
 			onmousemove={handleMouseMove}
 			onmouseup={handleMouseUp}

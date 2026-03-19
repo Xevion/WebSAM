@@ -83,7 +83,7 @@ const navActions = css({
         <span class={logoText}>WebSAM</span>
       </a>
       <div class={navActions}>
-        <Button href="https://github.com" variant="ghost" size="icon-sm" target="_blank" rel="noopener">
+        <Button href="https://github.com/Xevion/WebSAM" variant="ghost" size="icon-sm" target="_blank" rel="noopener">
           <Github size={16} />
         </Button>
         <ThemeToggle />

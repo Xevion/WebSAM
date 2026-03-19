@@ -29,6 +29,11 @@ export function getSession(): OnnxSession | null {
 	return currentSession;
 }
 
+/**
+ * Destroys the current ONNX session.
+ * In production, this must call session.release() on both encoder and decoder
+ * InferenceSession instances to free GPU/WASM memory before setting to null.
+ */
 export function destroySession(): void {
 	currentSession = null;
 }

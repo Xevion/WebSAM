@@ -11,7 +11,7 @@ import Cpu from '@lucide/svelte/icons/cpu';
 import { css } from 'styled-system/css';
 
 const items = $derived(
-	MODEL_REGISTRY.map((m) => ({
+	MODEL_REGISTRY.filter((m) => !m.requiresWebGPU || appState.webgpuAvailable).map((m) => ({
 		label: m.name,
 		value: m.id,
 		model: m,
@@ -59,7 +59,13 @@ const trigger = css({
 	fontSize: 'sm',
 	fontWeight: 'medium',
 	transition: 'border-color 150ms',
-	_focusVisible: { outline: 'none', borderColor: 'primary', outlineWidth: '1px', outlineColor: 'primary', outlineStyle: 'solid' },
+	_focusVisible: {
+		outline: 'none',
+		borderColor: 'primary',
+		outlineWidth: '1px',
+		outlineColor: 'primary',
+		outlineStyle: 'solid',
+	},
 	_open: { borderColor: 'primary', outlineWidth: '1px', outlineColor: 'primary', outlineStyle: 'solid' },
 	'& svg': { pointerEvents: 'none', flexShrink: 0, width: '1em', height: '1em' },
 });
@@ -222,7 +228,7 @@ const cachedBadge = css({
 					<span class={cachedBadge}>Cached</span>
 				{/if}
 			</div>
-			{#if appState.selectedModel.requiresWebGPU && !appState.webgpuAvailable}
+			{#if !appState.webgpuAvailable && appState.selectedModel.family !== 'sam1'}
 				<div class={css({ color: 'danger.subtleFg', fontWeight: 'medium' })}>
 					WebGPU required but not available
 				</div>

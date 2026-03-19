@@ -51,6 +51,22 @@ export function canvasToImageCoords(
 }
 
 /**
+ * Scale image-pixel coordinates to 1024x1024 model space.
+ * All SAM encoder/decoder models operate in 1024x1024 coordinate space.
+ */
+export function imageToModelCoords(
+	imageX: number,
+	imageY: number,
+	imageWidth: number,
+	imageHeight: number,
+): { x: number; y: number } {
+	return {
+		x: (imageX / imageWidth) * 1024,
+		y: (imageY / imageHeight) * 1024,
+	};
+}
+
+/**
  * Export an ImageData mask as a PNG Blob.
  */
 export function maskToBlob(mask: ImageData): Promise<Blob> {

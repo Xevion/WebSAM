@@ -3,7 +3,8 @@ import { Progress } from '@ark-ui/svelte/progress';
 import { css } from 'styled-system/css';
 
 interface Props {
-	value: number;
+	/** Pass null for indeterminate progress. */
+	value: number | null;
 	max?: number;
 	label?: string;
 	class?: string;
