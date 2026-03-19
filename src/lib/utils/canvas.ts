@@ -1,4 +1,5 @@
 import type { Point, Box } from '$lib/inference/types';
+import { extractContours } from './contour';
 
 export function drawPointMarker(
 	ctx: CanvasRenderingContext2D,
@@ -76,37 +77,23 @@ export function drawMaskOutline(
 	offsetX: number,
 	offsetY: number,
 ): void {
-	const { width, height, data } = mask;
+	const contours = extractContours(mask);
 
 	ctx.strokeStyle = color;
 	ctx.lineWidth = 2;
-	ctx.beginPath();
+	ctx.lineJoin = 'round';
 
-	for (let y = 0; y < height; y++) {
-		for (let x = 0; x < width; x++) {
-			const idx = (y * width + x) * 4;
-			const isMask = data[idx + 3] > 128;
-			if (!isMask) continue;
-
-			const isEdge =
-				x === 0 ||
-				x === width - 1 ||
-				y === 0 ||
-				y === height - 1 ||
-				data[((y - 1) * width + x) * 4 + 3] <= 128 ||
-				data[((y + 1) * width + x) * 4 + 3] <= 128 ||
-				data[(y * width + (x - 1)) * 4 + 3] <= 128 ||
-				data[(y * width + (x + 1)) * 4 + 3] <= 128;
-
-			if (isEdge) {
-				const px = x * scale + offsetX;
-				const py = y * scale + offsetY;
-				ctx.rect(px, py, scale, scale);
-			}
+	for (const polygon of contours) {
+		if (polygon.length < 2) continue;
+		ctx.beginPath();
+		// marching-squares returns [col, row] pairs
+		ctx.moveTo(polygon[0][0] * scale + offsetX, polygon[0][1] * scale + offsetY);
+		for (let i = 1; i < polygon.length; i++) {
+			ctx.lineTo(polygon[i][0] * scale + offsetX, polygon[i][1] * scale + offsetY);
 		}
+		ctx.closePath();
+		ctx.stroke();
 	}
-
-	ctx.stroke();
 }
 
 export function drawCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number): void {

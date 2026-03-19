@@ -4,12 +4,18 @@ import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } fr
 import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
 import { getWorkerApi } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
+import type { PanzoomObject } from '@panzoom/panzoom';
 import Upload from '@lucide/svelte/icons/upload';
 import ImageIcon from '@lucide/svelte/icons/image';
-import { css } from 'styled-system/css';
+import ZoomIn from '@lucide/svelte/icons/zoom-in';
+import ZoomOut from '@lucide/svelte/icons/zoom-out';
+import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+import { css, cx } from 'styled-system/css';
 
 let canvasEl: HTMLCanvasElement | undefined = $state();
 let containerEl: HTMLDivElement | undefined = $state();
+let panzoomEl: HTMLDivElement | undefined = $state();
+let panzoomInstance: PanzoomObject | undefined = $state();
 let isDragging = $state(false);
 let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
@@ -33,6 +39,76 @@ $effect(() => {
 	observer.observe(containerEl);
 	return () => observer.disconnect();
 });
+
+$effect(() => {
+	if (!panzoomEl || !containerEl) return;
+
+	const el = panzoomEl;
+	const container = containerEl;
+	let instance: PanzoomObject | undefined;
+
+	// Dynamic import avoids SSR evaluation of this DOM-only CJS library
+	import('@panzoom/panzoom').then(({ default: Panzoom }) => {
+		if (!el.isConnected) return;
+
+		instance = Panzoom(el, {
+			maxScale: 20,
+			minScale: 0.1,
+			contain: 'outside',
+			cursor: 'default',
+			handleStartEvent: (event: Event) => {
+				if (event instanceof MouseEvent && event.button === 1) {
+					event.preventDefault();
+					event.stopPropagation();
+				}
+			},
+			noBind: true,
+		});
+
+		el.addEventListener('pointerdown', onPointerDown);
+		document.addEventListener('pointermove', onPointerMove);
+		document.addEventListener('pointerup', onPointerUp);
+		container.addEventListener('wheel', onWheel, { passive: false });
+
+		panzoomInstance = instance;
+	});
+
+	function onPointerDown(event: PointerEvent) {
+		if (event.button !== 1) return;
+		event.preventDefault();
+		instance?.handleDown(event);
+	}
+	function onPointerMove(event: PointerEvent) {
+		instance?.handleMove(event);
+	}
+	function onPointerUp(event: PointerEvent) {
+		instance?.handleUp(event);
+	}
+	function onWheel(event: WheelEvent) {
+		instance?.zoomWithWheel(event);
+	}
+
+	return () => {
+		el.removeEventListener('pointerdown', onPointerDown);
+		document.removeEventListener('pointermove', onPointerMove);
+		document.removeEventListener('pointerup', onPointerUp);
+		container.removeEventListener('wheel', onWheel);
+		instance?.destroy();
+		panzoomInstance = undefined;
+	};
+});
+
+// getBoundingClientRect() reflects CSS transforms, so we can derive
+// canvas-space coords by comparing visual size to intrinsic pixel size
+function screenToCanvasCoords(clientX: number, clientY: number): { x: number; y: number } {
+	const canvasRect = canvasEl!.getBoundingClientRect();
+	const scaleX = canvasRect.width / canvasEl!.width;
+	const scaleY = canvasRect.height / canvasEl!.height;
+	return {
+		x: (clientX - canvasRect.left) / scaleX,
+		y: (clientY - canvasRect.top) / scaleY,
+	};
+}
 
 const fit = $derived(
 	appState.currentImage
@@ -178,12 +254,9 @@ async function runDecoder(points: Point[], box: Box | null) {
 function handleCanvasClick(event: MouseEvent) {
 	if (!appState.currentImage || !appState.isModelReady) return;
 	if (appState.interactionMode !== 'point') return;
+	if (!canvasEl) return;
 
-	const rect = canvasEl?.getBoundingClientRect();
-	if (!rect) return;
-
-	const cx = event.clientX - rect.left;
-	const cy = event.clientY - rect.top;
+	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
 	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
 
 	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) return;
@@ -206,12 +279,9 @@ function handleContextMenu(event: MouseEvent) {
 
 function handleMouseDown(event: MouseEvent) {
 	if (appState.interactionMode !== 'box' || !appState.currentImage) return;
+	if (!canvasEl) return;
 
-	const rect = canvasEl?.getBoundingClientRect();
-	if (!rect) return;
-
-	const cx = event.clientX - rect.left;
-	const cy = event.clientY - rect.top;
+	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
 	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
 
 	isDragging = true;
@@ -220,10 +290,10 @@ function handleMouseDown(event: MouseEvent) {
 }
 
 function handleMouseMove(event: MouseEvent) {
-	const rect = canvasEl?.getBoundingClientRect();
-	if (!rect) return;
+	if (!canvasEl) return;
 
-	mousePos = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
+	mousePos = { x: cx, y: cy };
 
 	if (isDragging && dragStart && appState.interactionMode === 'box') {
 		const { x, y } = canvasToImageCoords(mousePos.x, mousePos.y, fit.scale, fit.offsetX, fit.offsetY);
@@ -272,11 +342,46 @@ const container = css({
 	justifyContent: 'center',
 });
 
-const canvasStyle = css({
+const panzoomWrapper = css({
 	position: 'absolute',
 	inset: '0',
 	w: 'full',
 	h: 'full',
+	transformOrigin: '50% 50%',
+});
+
+const canvasStyle = css({
+	display: 'block',
+	w: 'full',
+	h: 'full',
+});
+
+const zoomControls = css({
+	position: 'absolute',
+	bottom: '3',
+	right: '3',
+	display: 'flex',
+	gap: '1',
+	zIndex: 10,
+});
+
+const zoomBtn = css({
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	w: '8',
+	h: '8',
+	borderRadius: 'md',
+	bg: 'bg',
+	color: 'fg.muted',
+	border: '1px solid',
+	borderColor: 'border',
+	cursor: 'pointer',
+	transition: 'all 150ms',
+	_hover: {
+		bg: 'bg.subtle',
+		color: 'fg',
+	},
 });
 
 const dropZone = css({
@@ -331,15 +436,43 @@ const cursorBox = css({
 	aria-label="Image canvas"
 >
 	{#if appState.currentImage}
-		<canvas
-			bind:this={canvasEl}
-			class={`${canvasStyle} ${appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : ''}`}
-			onclick={handleCanvasClick}
-			oncontextmenu={handleContextMenu}
-			onmousedown={handleMouseDown}
-			onmousemove={handleMouseMove}
-			onmouseup={handleMouseUp}
-		></canvas>
+		<div bind:this={panzoomEl} class={panzoomWrapper}>
+			<canvas
+				bind:this={canvasEl}
+				class={cx(canvasStyle, appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : '')}
+				onclick={handleCanvasClick}
+				oncontextmenu={handleContextMenu}
+				onmousedown={handleMouseDown}
+				onmousemove={handleMouseMove}
+				onmouseup={handleMouseUp}
+			></canvas>
+		</div>
+		<div class={zoomControls}>
+			<button
+				type="button"
+				class={zoomBtn}
+				onclick={() => panzoomInstance?.zoomIn()}
+				aria-label="Zoom in"
+			>
+				<ZoomIn size={16} />
+			</button>
+			<button
+				type="button"
+				class={zoomBtn}
+				onclick={() => panzoomInstance?.zoomOut()}
+				aria-label="Zoom out"
+			>
+				<ZoomOut size={16} />
+			</button>
+			<button
+				type="button"
+				class={zoomBtn}
+				onclick={() => panzoomInstance?.reset()}
+				aria-label="Reset zoom"
+			>
+				<RotateCcw size={16} />
+			</button>
+		</div>
 	{:else}
 		<label class={`${dropZone} ${isDropHover ? dropZoneActive : ''}`}>
 			{#if isDropHover}

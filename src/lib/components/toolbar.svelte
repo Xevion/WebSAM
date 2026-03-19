@@ -9,7 +9,7 @@ import Trash2 from '@lucide/svelte/icons/trash-2';
 import DownloadIcon from '@lucide/svelte/icons/download';
 import Copy from '@lucide/svelte/icons/copy';
 import { css } from 'styled-system/css';
-import { maskToBlob, createCutout } from '$lib/utils/image';
+import { exportMask, exportCutout, copyMaskToClipboard } from '$lib/utils/export';
 import type { HTMLAttributes } from 'svelte/elements';
 
 type TooltipProps = (p?: Record<string, unknown>) => HTMLAttributes<HTMLElement>;
@@ -30,36 +30,6 @@ function handleModeChange(value: string[]) {
 function runEverythingMode() {
 	appState.interactionMode = 'everything';
 	resetPrompts();
-}
-
-async function exportMask() {
-	const mask = appState.maskResult?.masks[appState.maskResult.selectedIndex];
-	if (!mask) return;
-	const blob = await maskToBlob(mask);
-	downloadBlob(blob, 'mask.png');
-}
-
-async function exportCutout() {
-	const mask = appState.maskResult?.masks[appState.maskResult.selectedIndex];
-	if (!mask || !appState.currentImage) return;
-	const blob = await createCutout(appState.currentImage, mask);
-	downloadBlob(blob, 'cutout.png');
-}
-
-async function copyMask() {
-	const mask = appState.maskResult?.masks[appState.maskResult.selectedIndex];
-	if (!mask) return;
-	const blob = await maskToBlob(mask);
-	await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = filename;
-	a.click();
-	URL.revokeObjectURL(url);
 }
 
 const bar = css({
@@ -170,7 +140,7 @@ const hasPoints = $derived(appState.points.length > 0);
 	<Tooltip content="Copy mask to clipboard">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
-				<Button size="icon-sm" variant="ghost" onclick={copyMask} disabled={!hasMask}>
+				<Button size="icon-sm" variant="ghost" onclick={copyMaskToClipboard} disabled={!hasMask}>
 					<Copy size={14} />
 				</Button>
 			</span>
