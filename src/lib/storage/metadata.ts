@@ -43,6 +43,8 @@ export interface SessionState {
 	maskViewMode: 'overlay' | 'outline' | 'cutout';
 	maskOpacity: number;
 	maskColor: string;
+	maskThreshold?: number;
+	maskSmoothPasses?: number;
 	interactionMode: 'point' | 'box' | 'everything';
 }
 

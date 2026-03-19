@@ -3,7 +3,7 @@ import { untrack } from 'svelte';
 import { appState, resetPrompts, clearEmbedding, pushPromptState } from '$lib/stores/app-state.svelte';
 import { loadImageFromFile, computeFit, canvasToImageCoords, imageToRawData } from '$lib/utils/image';
 import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
-import { drawPointMarker, drawBoxOutline, drawMaskOverlay, drawMaskOutline, drawCrosshair } from '$lib/utils/canvas';
+import { drawPointMarker, drawBoxOutline, drawCrosshair, renderImageLayer, renderMaskLayer, renderHoverDeltaLayer, invalidateAllLayers } from '$lib/utils/canvas';
 import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
 import type { Point, Box } from '$lib/inference/types';
 import { errorMessage } from '$lib/utils/error';
@@ -27,6 +27,7 @@ let dragStart: { x: number; y: number } | null = $state(null);
 let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
 let hoverDecodeTimer: ReturnType<typeof setTimeout> | null = null;
+let rethresholdTimer: ReturnType<typeof setTimeout> | null = null;
 let decodeRequestId = 0;
 let hoverRequestId = 0;
 
@@ -132,49 +133,50 @@ $effect(() => {
 
 	canvasEl.width = canvasWidth;
 	canvasEl.height = canvasHeight;
-
 	ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
 	if (!appState.currentImage) return;
 
 	const { scale, offsetX, offsetY } = fit;
 	const img = appState.currentImage;
+	const mask = appState.maskResult?.masks[appState.maskResult.selectedIndex] ?? null;
 
-	if (appState.maskViewMode === 'cutout' && appState.maskResult) {
-		const mask = appState.maskResult.masks[appState.maskResult.selectedIndex];
-		if (mask) {
-			const offscreen = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
-			const offCtx = offscreen.getContext('2d');
-			if (offCtx) {
-				offCtx.drawImage(img, 0, 0);
-				const imageData = offCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
-				for (let i = 0; i < imageData.data.length; i += 4) {
-					imageData.data[i + 3] = mask.data[i + 3]!;
-				}
-				offCtx.putImageData(imageData, 0, 0);
-				ctx.drawImage(offscreen, offsetX, offsetY, img.naturalWidth * scale, img.naturalHeight * scale);
-			}
-		}
-	} else {
-		ctx.drawImage(img, offsetX, offsetY, img.naturalWidth * scale, img.naturalHeight * scale);
+	// Layer 1: Image (cached)
+	const imgLayer = renderImageLayer(img, canvasWidth, canvasHeight, fit);
+	ctx.drawImage(imgLayer, 0, 0);
 
-		// Hover preview drawn before committed mask so committed mask takes priority
-		if (appState.hoverMask && !appState.maskResult) {
-			drawMaskOverlay(ctx, appState.hoverMask, appState.maskColor, 0.3, scale, offsetX, offsetY);
+	// Layer 2: Mask (cached)
+	if (mask && appState.maskViewMode === 'cutout') {
+		// Cutout replaces the image layer
+		const cutoutLayer = renderMaskLayer(
+			mask, appState.maskColor, appState.maskOpacity,
+			'cutout', scale, offsetX, offsetY,
+			img, canvasWidth, canvasHeight,
+		);
+		if (cutoutLayer) {
+			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+			ctx.drawImage(cutoutLayer, 0, 0);
 		}
-
-		if (appState.maskResult) {
-			const mask = appState.maskResult.masks[appState.maskResult.selectedIndex];
-			if (mask) {
-				if (appState.maskViewMode === 'overlay') {
-					drawMaskOverlay(ctx, mask, appState.maskColor, appState.maskOpacity, scale, offsetX, offsetY);
-				} else if (appState.maskViewMode === 'outline') {
-					drawMaskOutline(ctx, mask, appState.maskColor, scale, offsetX, offsetY);
-				}
-			}
-		}
+	} else if (mask) {
+		const maskLayer = renderMaskLayer(
+			mask, appState.maskColor, appState.maskOpacity,
+			appState.maskViewMode, scale, offsetX, offsetY,
+			null, canvasWidth, canvasHeight,
+		);
+		if (maskLayer) ctx.drawImage(maskLayer, 0, 0);
 	}
 
+	// Layer 3: Hover delta (cached) — always available in point mode
+	if (appState.hoverMask && appState.interactionMode === 'point') {
+		const hoverLayer = renderHoverDeltaLayer(
+			appState.hoverMask, mask,
+			scale, offsetX, offsetY,
+			canvasWidth, canvasHeight,
+		);
+		if (hoverLayer) ctx.drawImage(hoverLayer, 0, 0);
+	}
+
+	// Layer 4: Interaction (drawn directly, cheap)
 	for (const point of appState.points) {
 		drawPointMarker(ctx, point, scale, offsetX, offsetY);
 	}
@@ -201,11 +203,12 @@ $effect(() => {
 	return () => window.removeEventListener('websam:load-file', onLoadFile);
 });
 
-// Clear hover state when interaction mode or image changes
+// Clear hover state and layer caches when interaction mode or image changes
 $effect(() => {
 	void appState.interactionMode;
 	void appState.currentImage;
 	appState.hoverMask = null;
+	invalidateAllLayers();
 	if (hoverDecodeTimer) clearTimeout(hoverDecodeTimer);
 });
 
@@ -217,6 +220,34 @@ $effect(() => {
 			void runDecoder([...appState.points], appState.box ? { ...appState.box } : null);
 		});
 	}
+});
+
+// Debounced rethreshold when threshold or smoothing changes
+$effect(() => {
+	const threshold = appState.maskThreshold;
+	const smoothPasses = appState.maskSmoothPasses;
+
+	if (rethresholdTimer) clearTimeout(rethresholdTimer);
+	rethresholdTimer = setTimeout(() => {
+		untrack(() => {
+			if (!appState.maskResult || !appState.currentImage) return;
+			const api = getWorkerApi();
+			void withTimeout(
+				api.rethreshold(
+					threshold,
+					smoothPasses,
+					appState.currentImage.naturalWidth,
+					appState.currentImage.naturalHeight,
+				),
+				30_000,
+				'rethreshold',
+			).then((result) => {
+				if (result) appState.maskResult = result;
+			}).catch((err) => {
+				logger.error('Rethreshold failed', { error: errorMessage(err) });
+			});
+		});
+	}, 150);
 });
 
 async function handleFileDrop(files: FileList | null) {

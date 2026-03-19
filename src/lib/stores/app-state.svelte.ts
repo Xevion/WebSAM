@@ -34,6 +34,8 @@ export const appState = $state({
 	maskOpacity: 0.5,
 	maskColor: '#6366f1',
 	maskViewMode: 'overlay' as 'overlay' | 'outline' | 'cutout',
+	maskThreshold: 0.0,
+	maskSmoothPasses: 0,
 
 	/** Lightweight mask shown during hover (not committed until click). */
 	hoverMask: null as ImageData | null,
@@ -51,6 +53,8 @@ export function resetPrompts(): void {
 	appState.points = [];
 	appState.box = null;
 	appState.maskResult = null;
+	appState.maskThreshold = 0.0;
+	appState.maskSmoothPasses = 0;
 	appState.inferenceProgress = { stage: 'idle' };
 	logger.debug('Prompts reset');
 	scheduleSave();

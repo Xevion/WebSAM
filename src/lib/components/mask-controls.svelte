@@ -33,6 +33,16 @@ function handleOpacityChange(value: number[]) {
 	scheduleSave();
 }
 
+function handleThresholdChange(value: number[]) {
+	appState.maskThreshold = (value[0] ?? 0) / 10;
+	scheduleSave();
+}
+
+function handleSmoothPassesChange(value: number[]) {
+	appState.maskSmoothPasses = value[0] ?? 0;
+	scheduleSave();
+}
+
 const wrapper = css({
 	display: 'flex',
 	flexDirection: 'column',
@@ -149,6 +159,32 @@ const scoreLabel = css({
 			{/each}
 		</div>
 	</div>
+
+	{#if appState.maskResult !== null}
+		<div class={section}>
+			<span class={sectionLabel}>Threshold</span>
+			<SliderComponent
+				value={[Math.round(appState.maskThreshold * 10)]}
+				onValueChange={handleThresholdChange}
+				min={-20}
+				max={20}
+				step={1}
+				label="Threshold"
+			/>
+		</div>
+
+		<div class={section}>
+			<span class={sectionLabel}>Smoothing</span>
+			<SliderComponent
+				value={[appState.maskSmoothPasses]}
+				onValueChange={handleSmoothPassesChange}
+				min={0}
+				max={5}
+				step={1}
+				label="Smoothing"
+			/>
+		</div>
+	{/if}
 
 	{#if appState.maskResult && appState.maskResult.masks.length > 1}
 		<div class={section}>

@@ -13,6 +13,7 @@ import { browser } from '$app/environment';
 import { initShortcuts } from '$lib/stores/shortcuts.svelte';
 import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onWorkerError } from '$lib/inference/worker-api';
+import { toaster } from '$lib/stores/toast.svelte';
 import { onMount } from 'svelte';
 
 const logger = getLogger(['websam', 'app']);
@@ -24,7 +25,10 @@ if (browser) {
 
 onMount(() => {
 	const cleanup = initShortcuts();
-	restoreSession().catch((err: unknown) => logger.error('Session restore failed', { error: errorMessage(err) }));
+	restoreSession().catch((err: unknown) => {
+		logger.error('Session restore failed', { error: errorMessage(err) });
+		toaster.error({ title: 'Failed to restore previous session' });
+	});
 
 	const unsubWorkerError = onWorkerError((err: Error) => {
 		logger.error('Inference worker crashed', { error: err.message });
@@ -39,6 +43,7 @@ onMount(() => {
 			totalBytes: 0,
 			error: 'Worker crashed. Re-download to restart.',
 		};
+		toaster.error({ title: 'Inference worker crashed', description: 'Re-download model to restart.' });
 	});
 
 	return () => {

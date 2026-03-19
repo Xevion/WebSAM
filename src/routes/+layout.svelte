@@ -10,6 +10,7 @@ import Github from '@lucide/svelte/icons/github';
 import Layers from '@lucide/svelte/icons/layers';
 import type { Snippet } from 'svelte';
 import { css } from 'styled-system/css';
+import ToastContainer from '$lib/components/ui/toast.svelte';
 
 let { children }: { children: Snippet } = $props();
 
@@ -99,3 +100,5 @@ const navActions = css({
     {@render children()}
   </main>
 </div>
+
+<ToastContainer />

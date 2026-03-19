@@ -10,6 +10,8 @@ import {
 import { writeCurrentImage, readCurrentImage, deleteCurrentImage } from '$lib/storage/opfs';
 import { MODEL_REGISTRY } from '$lib/inference/models';
 import { loadImageFromFile } from '$lib/utils/image';
+import { toaster } from '$lib/stores/toast.svelte';
+import { errorMessage } from '$lib/utils/error';
 
 const logger = getLogger(['websam', 'persistence']);
 
@@ -22,21 +24,28 @@ export function scheduleSave(): void {
 }
 
 async function saveSession(): Promise<void> {
-	logger.debug('Saving session');
-	await setSessionState(
-		$state.snapshot({
-			points: appState.points,
-			box: appState.box,
-			hasImage: appState.currentImage !== null,
-			maskViewMode: appState.maskViewMode,
-			maskOpacity: appState.maskOpacity,
-			maskColor: appState.maskColor,
-			interactionMode: appState.interactionMode,
-		}),
-	);
+	try {
+		logger.debug('Saving session');
+		await setSessionState(
+			$state.snapshot({
+				points: appState.points,
+				box: appState.box,
+				hasImage: appState.currentImage !== null,
+				maskViewMode: appState.maskViewMode,
+				maskOpacity: appState.maskOpacity,
+				maskColor: appState.maskColor,
+				maskThreshold: appState.maskThreshold,
+				maskSmoothPasses: appState.maskSmoothPasses,
+				interactionMode: appState.interactionMode,
+			}),
+		);
 
-	if (appState.selectedModel) {
-		await setLastSelectedModelId(appState.selectedModel.id);
+		if (appState.selectedModel) {
+			await setLastSelectedModelId(appState.selectedModel.id);
+		}
+	} catch (err: unknown) {
+		logger.error('Failed to save session', { error: errorMessage(err) });
+		toaster.error({ title: 'Failed to save session' });
 	}
 }
 
@@ -57,6 +66,8 @@ export async function restoreSession(): Promise<void> {
 	appState.maskViewMode = session.maskViewMode;
 	appState.maskOpacity = session.maskOpacity;
 	appState.maskColor = session.maskColor;
+	appState.maskThreshold = session.maskThreshold ?? 0.0;
+	appState.maskSmoothPasses = session.maskSmoothPasses ?? 0;
 	appState.interactionMode = session.interactionMode;
 	appState.points = session.points;
 	appState.box = session.box;

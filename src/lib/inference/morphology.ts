@@ -1,15 +1,21 @@
+function clampedGet(alpha: Uint8ClampedArray, x: number, y: number, width: number, height: number): number {
+	const cx = Math.max(0, Math.min(x, width - 1));
+	const cy = Math.max(0, Math.min(y, height - 1));
+	return alpha[cy * width + cx];
+}
+
 // 4-connected erosion: pixel survives only if all 4 neighbors are also set
 export function erode(alpha: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
 	const result = new Uint8ClampedArray(alpha.length);
-	for (let y = 1; y < height - 1; y++) {
-		for (let x = 1; x < width - 1; x++) {
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
 			const idx = y * width + x;
 			if (
 				alpha[idx] > 128 &&
-				alpha[idx - 1] > 128 &&
-				alpha[idx + 1] > 128 &&
-				alpha[idx - width] > 128 &&
-				alpha[idx + width] > 128
+				clampedGet(alpha, x - 1, y, width, height) > 128 &&
+				clampedGet(alpha, x + 1, y, width, height) > 128 &&
+				clampedGet(alpha, x, y - 1, width, height) > 128 &&
+				clampedGet(alpha, x, y + 1, width, height) > 128
 			) {
 				result[idx] = 255;
 			}
@@ -21,15 +27,15 @@ export function erode(alpha: Uint8ClampedArray, width: number, height: number): 
 // 4-connected dilation: pixel is set if any of its 4 neighbors are set
 export function dilate(alpha: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
 	const result = new Uint8ClampedArray(alpha.length);
-	for (let y = 1; y < height - 1; y++) {
-		for (let x = 1; x < width - 1; x++) {
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
 			const idx = y * width + x;
 			if (
 				alpha[idx] > 128 ||
-				alpha[idx - 1] > 128 ||
-				alpha[idx + 1] > 128 ||
-				alpha[idx - width] > 128 ||
-				alpha[idx + width] > 128
+				clampedGet(alpha, x - 1, y, width, height) > 128 ||
+				clampedGet(alpha, x + 1, y, width, height) > 128 ||
+				clampedGet(alpha, x, y - 1, width, height) > 128 ||
+				clampedGet(alpha, x, y + 1, width, height) > 128
 			) {
 				result[idx] = 255;
 			}
