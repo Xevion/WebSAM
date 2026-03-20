@@ -1,0 +1,12 @@
+name = "websam"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+binding = "ASSETS"
+directory = ".svelte-kit/cloudflare"
+
+[[r2_buckets]]
+binding = "MODELS"
+bucket_name = "websam-models"

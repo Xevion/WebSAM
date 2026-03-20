@@ -19,12 +19,14 @@
 		"format:check": "biome check --formatter-enabled=true --linter-enabled=false ."
 	},
 	"devDependencies": {
+		"@aws-sdk/client-s3": "^3.1013.0",
+		"@aws-sdk/lib-storage": "^3.1013.0",
 		"@biomejs/biome": "2.4.3",
 		"@eslint/compat": "^2.0.2",
 		"@eslint/js": "^10.0.1",
 		"@lucide/svelte": "^0.575.0",
 		"@pandacss/dev": "^1.8.2",
-		"@sveltejs/adapter-static": "^3.0.0",
+		"@sveltejs/adapter-cloudflare": "^7.2.8",
 		"@sveltejs/kit": "^2.50.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@types/file-saver": "^2.0.7",
@@ -47,6 +49,7 @@
 		"@ark-ui/svelte": "^5.19.1",
 		"@logtape/logtape": "^2.0.4",
 		"@ramstack/hotkey": "^1.1.1",
+		"aws4fetch": "^1.0.20",
 		"browser-image-compression": "^2.0.2",
 		"comlink": "^4.4.2",
 		"file-saver": "^2.0.5",

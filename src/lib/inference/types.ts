@@ -7,8 +7,10 @@ export interface ModelInfo {
 	decoderSize: number;
 	totalSize: number;
 	description: string;
-	encoderUrl: string;
-	decoderUrl: string;
+	/** R2 object key for the encoder model file */
+	encoderKey: string;
+	/** R2 object key for the decoder model file */
+	decoderKey: string;
 	quantization: 'fp32' | 'fp16' | 'int8';
 	requiresWebGPU: boolean;
 }

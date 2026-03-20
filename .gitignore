@@ -18,6 +18,9 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# Cloudflare Workers local secrets
+.dev.vars
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
@@ -27,9 +30,6 @@ vite.config.ts.timestamp-*
 
 # ESLint cache
 .eslintcache
-
-# Bun
-bun.lock
 
 # ONNX model files (downloaded for local dev)
 /models

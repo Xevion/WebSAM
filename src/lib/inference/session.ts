@@ -49,6 +49,12 @@ async function configureOrt(useWebGPU: boolean): Promise<void> {
 	const ort = await getOrt();
 	ort.env.logLevel = 'warning';
 
+	// In production, WASM files are hosted on R2 and served via /wasm/ route.
+	// In dev, Vite serves them from node_modules.
+	if (!import.meta.env.DEV) {
+		ort.env.wasm.wasmPaths = '/wasm/';
+	}
+
 	if (useWebGPU) {
 		// WebGPU doesn't need WASM threading
 		ort.env.wasm.numThreads = 1;

@@ -1,46 +1,46 @@
 import devtoolsJson from 'vite-plugin-devtools-json';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
-import { join, resolve } from 'node:path';
 import type { Plugin } from 'vite';
-import { existsSync, createReadStream, statSync } from 'node:fs';
-import { lookup } from 'mrmime';
 
 /**
- * Serves files from the local models/ directory at /models/ URL path
- * during development. These files are NOT included in the production build.
+ * Prevents Vite from bundling ORT WASM files as static assets.
+ * Vite detects `new URL('...wasm', import.meta.url)` patterns and copies the
+ * referenced files into the build output. For ORT, this produces 25+ MB WASM
+ * files that exceed Cloudflare Workers' asset size limit.
+ *
+ * This plugin rewrites those URL references to data URIs during transform,
+ * so Vite never emits the WASM files. At runtime, ORT uses
+ * `ort.env.wasm.wasmPaths` (set in session.ts) to load WASM from R2 instead.
  */
-function serveModels(): Plugin {
+function stripOrtWasm(): Plugin {
 	return {
-		name: 'serve-models',
-		configureServer(server) {
-			const modelsDir = resolve(process.cwd(), 'models');
-			server.middlewares.use((req, res, next) => {
-				if (!req.url?.startsWith('/models/')) return next();
-				const filePath = resolve(join(modelsDir, decodeURIComponent(req.url.slice('/models'.length))));
-				if (!filePath.startsWith(modelsDir)) return next();
-				if (!existsSync(filePath)) return next();
-				const stat = statSync(filePath);
-				const mime = lookup(filePath) ?? 'application/octet-stream';
-				res.setHeader('Content-Type', mime);
-				res.setHeader('Content-Length', stat.size);
-				res.setHeader('Access-Control-Allow-Origin', '*');
-				createReadStream(filePath).pipe(res);
-			});
+		name: 'strip-ort-wasm',
+		enforce: 'pre',
+		apply: 'build',
+		transform(code, id) {
+			if (!id.includes('onnxruntime-web')) return;
+			if (id.includes('.wasm')) return;
+			const replaced = code.replace(
+				/new URL\("ort-wasm[^"]*\.wasm",import\.meta\.url\)/g,
+				'new URL("data:,")',
+			);
+			if (replaced !== code) return replaced;
 		},
 	};
 }
 
 export default defineConfig({
 	clearScreen: false,
-	plugins: [sveltekit(), devtoolsJson(), serveModels()],
+	plugins: [sveltekit(), devtoolsJson(), stripOrtWasm()],
 	optimizeDeps: {
 		exclude: ['onnxruntime-web'],
 	},
 	worker: {
 		format: 'es',
+		plugins: () => [stripOrtWasm()],
 	},
 	server: {
-		fs: { allow: ['styled-system', 'models'] },
+		fs: { allow: ['styled-system'] },
 	},
 });

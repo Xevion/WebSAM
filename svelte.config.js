@@ -1,10 +1,13 @@
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-cloudflare';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	kit: {
 		adapter: adapter({
-			fallback: 'index.html',
+			platformProxy: {
+				configPath: 'wrangler.toml',
+				persist: { path: '.wrangler/state/v3' },
+			},
 		}),
 		alias: {
 			'styled-system': './styled-system/*',

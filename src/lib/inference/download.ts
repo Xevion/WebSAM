@@ -6,8 +6,19 @@ import { getCachedModelMeta } from '../storage/metadata';
 const logger = getLogger(['websam', 'inference', 'download']);
 
 /**
+ * Resolves an R2 object key to a presigned download URL.
+ */
+async function resolveModelUrl(key: string): Promise<string> {
+	const res = await fetch(`/api/model-url?key=${encodeURIComponent(key)}`);
+	if (!res.ok) {
+		throw new Error(`Failed to resolve model URL for ${key}: ${res.status}`);
+	}
+	const { url } = await res.json();
+	return url;
+}
+
+/**
  * Fetches a single model file with streaming progress.
- * Works with both local dev server URLs and remote CDN URLs.
  */
 async function fetchWithProgress(
 	url: string,
@@ -26,7 +37,6 @@ async function fetchWithProgress(
 	const reader = response.body?.getReader();
 
 	if (!reader) {
-		// Fallback: no streaming (e.g., some browsers/servers)
 		logger.warn('Response not streamable, using arrayBuffer fallback', { url });
 		const buffer = await response.arrayBuffer();
 		onProgress(buffer.byteLength);
@@ -73,7 +83,7 @@ async function fetchWithProgress(
 
 /**
  * Downloads both encoder and decoder model files with progress updates.
- * Returns the raw ArrayBuffers for session creation.
+ * Resolves presigned URLs from R2 before fetching.
  */
 export async function downloadModel(
 	model: ModelInfo,
@@ -83,7 +93,14 @@ export async function downloadModel(
 	let encoderDownloaded = 0;
 	let decoderDownloaded = 0;
 
-	logger.info('Downloading encoder', { modelId: model.id, url: model.encoderUrl, expectedSize: model.encoderSize });
+	// Resolve presigned URLs for both model files
+	logger.info('Resolving model URLs', { modelId: model.id, encoderKey: model.encoderKey, decoderKey: model.decoderKey });
+	const [encoderUrl, decoderUrl] = await Promise.all([
+		resolveModelUrl(model.encoderKey),
+		resolveModelUrl(model.decoderKey),
+	]);
+
+	logger.info('Downloading encoder', { modelId: model.id, expectedSize: model.encoderSize });
 	onProgress({
 		stage: 'downloading-encoder',
 		bytesDownloaded: 0,
@@ -91,7 +108,7 @@ export async function downloadModel(
 	});
 
 	const encoderBuffer = await fetchWithProgress(
-		model.encoderUrl,
+		encoderUrl,
 		model.encoderSize,
 		(downloaded) => {
 			encoderDownloaded = downloaded;
@@ -104,7 +121,7 @@ export async function downloadModel(
 		signal,
 	);
 
-	logger.info('Downloading decoder', { modelId: model.id, url: model.decoderUrl, expectedSize: model.decoderSize });
+	logger.info('Downloading decoder', { modelId: model.id, expectedSize: model.decoderSize });
 	onProgress({
 		stage: 'downloading-decoder',
 		bytesDownloaded: encoderDownloaded,
@@ -112,7 +129,7 @@ export async function downloadModel(
 	});
 
 	const decoderBuffer = await fetchWithProgress(
-		model.decoderUrl,
+		decoderUrl,
 		model.decoderSize,
 		(downloaded) => {
 			decoderDownloaded = downloaded;
