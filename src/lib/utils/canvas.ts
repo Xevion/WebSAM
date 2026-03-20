@@ -4,38 +4,32 @@ import { extractContours } from './contour';
 export function drawPointMarker(
 	ctx: CanvasRenderingContext2D,
 	point: Point,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
+	effScale: number,
 ): void {
-	const x = point.x * scale + offsetX;
-	const y = point.y * scale + offsetY;
-	const radius = 6;
+	const radius = 6 / effScale;
 
 	ctx.beginPath();
-	ctx.arc(x, y, radius, 0, Math.PI * 2);
+	ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
 	ctx.fillStyle = point.label === 1 ? 'oklch(0.72 0.19 142)' : 'oklch(0.63 0.24 25)';
 	ctx.fill();
 	ctx.strokeStyle = '#ffffff';
-	ctx.lineWidth = 2;
+	ctx.lineWidth = 2 / effScale;
 	ctx.stroke();
 }
 
 export function drawBoxOutline(
 	ctx: CanvasRenderingContext2D,
 	box: Box,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
+	effScale: number,
 ): void {
-	const x = Math.min(box.x1, box.x2) * scale + offsetX;
-	const y = Math.min(box.y1, box.y2) * scale + offsetY;
-	const w = Math.abs(box.x2 - box.x1) * scale;
-	const h = Math.abs(box.y2 - box.y1) * scale;
+	const x = Math.min(box.x1, box.x2);
+	const y = Math.min(box.y1, box.y2);
+	const w = Math.abs(box.x2 - box.x1);
+	const h = Math.abs(box.y2 - box.y1);
 
 	ctx.strokeStyle = 'oklch(0.72 0.19 142)';
-	ctx.lineWidth = 2;
-	ctx.setLineDash([6, 4]);
+	ctx.lineWidth = 2 / effScale;
+	ctx.setLineDash([6 / effScale, 4 / effScale]);
 	ctx.strokeRect(x, y, w, h);
 	ctx.setLineDash([]);
 }
@@ -45,9 +39,6 @@ export function drawMaskOverlay(
 	mask: ImageData,
 	color: string,
 	opacity: number,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
 ): void {
 	const offscreen = new OffscreenCanvas(mask.width, mask.height);
 	const offCtx = offscreen.getContext('2d');
@@ -65,7 +56,7 @@ export function drawMaskOverlay(
 	overlayCtx.drawImage(offscreen, 0, 0);
 
 	ctx.globalAlpha = opacity;
-	ctx.drawImage(overlay, offsetX, offsetY, mask.width * scale, mask.height * scale);
+	ctx.drawImage(overlay, 0, 0);
 	ctx.globalAlpha = 1;
 }
 
@@ -73,47 +64,63 @@ export function drawMaskOutline(
 	ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
 	mask: ImageData,
 	color: string,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
+	effScale: number,
 	contours?: [number, number][][],
 ): void {
 	const resolvedContours = contours ?? extractContours(mask);
 
 	ctx.strokeStyle = color;
-	ctx.lineWidth = 2;
+	ctx.lineWidth = 2 / effScale;
 	ctx.lineJoin = 'round';
 
 	for (const polygon of resolvedContours) {
 		if (polygon.length < 2) continue;
 		ctx.beginPath();
-		// marching-squares returns [col, row] pairs
-		ctx.moveTo(polygon[0][0] * scale + offsetX, polygon[0][1] * scale + offsetY);
+		ctx.moveTo(polygon[0][0], polygon[0][1]);
 		for (let i = 1; i < polygon.length; i++) {
-			ctx.lineTo(polygon[i][0] * scale + offsetX, polygon[i][1] * scale + offsetY);
+			ctx.lineTo(polygon[i][0], polygon[i][1]);
 		}
 		ctx.closePath();
 		ctx.stroke();
 	}
 }
 
-export function drawCrosshair(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+/**
+ * Draws a crosshair at the cursor position in screen space.
+ * Temporarily resets the transform so the crosshair follows the CSS cursor
+ * regardless of the image-space transform applied to the context.
+ */
+export function drawCrosshair(
+	ctx: CanvasRenderingContext2D,
+	cssX: number,
+	cssY: number,
+	dpr: number,
+): void {
 	const size = 10;
+
+	const saved = ctx.getTransform();
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
 	ctx.strokeStyle = 'oklch(1 0 0 / 80%)';
 	ctx.lineWidth = 1;
 
 	ctx.beginPath();
-	ctx.moveTo(x - size, y);
-	ctx.lineTo(x + size, y);
-	ctx.moveTo(x, y - size);
-	ctx.lineTo(x, y + size);
+	ctx.moveTo(cssX - size, cssY);
+	ctx.lineTo(cssX + size, cssY);
+	ctx.moveTo(cssX, cssY - size);
+	ctx.lineTo(cssX, cssY + size);
 	ctx.stroke();
+
+	ctx.setTransform(saved);
 }
 
 /**
  * Draws a subtle crosshair at the image-space position where the hover decode
  * was triggered, giving the user visual context for the displayed hover mask.
  * Only drawn when the cursor has drifted away from the trigger point.
+ *
+ * All coordinates are in image pixel space. The distance threshold is computed
+ * in screen pixels using effScale.
  */
 export function drawHoverTriggerMarker(
 	ctx: CanvasRenderingContext2D,
@@ -121,45 +128,45 @@ export function drawHoverTriggerMarker(
 	triggerY: number,
 	cursorX: number,
 	cursorY: number,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
+	effScale: number,
 ): void {
-	const sx = triggerX * scale + offsetX;
-	const sy = triggerY * scale + offsetY;
-	const dist = Math.hypot(sx - cursorX, sy - cursorY);
+	// Distance in screen pixels for threshold comparison
+	const dist = Math.hypot(
+		(triggerX - cursorX) * effScale,
+		(triggerY - cursorY) * effScale,
+	);
 	// Only show when cursor has drifted noticeably from the trigger point
 	if (dist < 8) return;
 	// Fade in as the cursor drifts further, fully opaque at 40px+
 	const alpha = Math.min((dist - 8) / 32, 1);
 
-	const arm = 7;
-	const gap = 3;
+	const arm = 7 / effScale;
+	const gap = 3 / effScale;
 	ctx.save();
 	ctx.globalAlpha = alpha * 0.6;
 	ctx.strokeStyle = '#ffffff';
-	ctx.lineWidth = 2;
+	ctx.lineWidth = 2 / effScale;
 	ctx.beginPath();
-	ctx.moveTo(sx - arm, sy);
-	ctx.lineTo(sx - gap, sy);
-	ctx.moveTo(sx + gap, sy);
-	ctx.lineTo(sx + arm, sy);
-	ctx.moveTo(sx, sy - arm);
-	ctx.lineTo(sx, sy - gap);
-	ctx.moveTo(sx, sy + gap);
-	ctx.lineTo(sx, sy + arm);
+	ctx.moveTo(triggerX - arm, triggerY);
+	ctx.lineTo(triggerX - gap, triggerY);
+	ctx.moveTo(triggerX + gap, triggerY);
+	ctx.lineTo(triggerX + arm, triggerY);
+	ctx.moveTo(triggerX, triggerY - arm);
+	ctx.lineTo(triggerX, triggerY - gap);
+	ctx.moveTo(triggerX, triggerY + gap);
+	ctx.lineTo(triggerX, triggerY + arm);
 	ctx.stroke();
 	ctx.strokeStyle = 'oklch(0.75 0.17 155 / 80%)';
-	ctx.lineWidth = 1;
+	ctx.lineWidth = 1 / effScale;
 	ctx.beginPath();
-	ctx.moveTo(sx - arm, sy);
-	ctx.lineTo(sx - gap, sy);
-	ctx.moveTo(sx + gap, sy);
-	ctx.lineTo(sx + arm, sy);
-	ctx.moveTo(sx, sy - arm);
-	ctx.lineTo(sx, sy - gap);
-	ctx.moveTo(sx, sy + gap);
-	ctx.lineTo(sx, sy + arm);
+	ctx.moveTo(triggerX - arm, triggerY);
+	ctx.lineTo(triggerX - gap, triggerY);
+	ctx.moveTo(triggerX + gap, triggerY);
+	ctx.lineTo(triggerX + arm, triggerY);
+	ctx.moveTo(triggerX, triggerY - arm);
+	ctx.lineTo(triggerX, triggerY - gap);
+	ctx.moveTo(triggerX, triggerY + gap);
+	ctx.lineTo(triggerX, triggerY + arm);
 	ctx.stroke();
 	ctx.restore();
 }
@@ -174,23 +181,12 @@ let hoverLayerCanvas: OffscreenCanvas | null = null;
 
 // Cache keys for image layer
 let cachedImageRef: HTMLImageElement | null = null;
-let cachedImageCanvasW = -1;
-let cachedImageCanvasH = -1;
-let cachedImageFitScale = -1;
-let cachedImageFitOffX = -1;
-let cachedImageFitOffY = -1;
 
 // Cache keys for mask layer
 let cachedMaskRef: ImageData | null = null;
 let cachedMaskColor = '';
 let cachedMaskOpacity = -1;
 let cachedMaskViewMode = '';
-let cachedMaskCanvasW = -1;
-let cachedMaskCanvasH = -1;
-let cachedMaskFitScale = -1;
-let cachedMaskFitOffX = -1;
-let cachedMaskFitOffY = -1;
-// Cutout mode also depends on the image
 let cachedMaskImageRef: HTMLImageElement | null = null;
 
 // Cache for contour extraction (expensive — only recompute when mask changes)
@@ -200,11 +196,6 @@ let cachedContourMaskRef: ImageData | null = null;
 // Cache keys for hover layer
 let cachedHoverMaskRef: ImageData | null = null;
 let cachedCommittedMaskRef: ImageData | null = null;
-let cachedHoverCanvasW = -1;
-let cachedHoverCanvasH = -1;
-let cachedHoverFitScale = -1;
-let cachedHoverFitOffX = -1;
-let cachedHoverFitOffY = -1;
 
 /** Ensure an OffscreenCanvas matches the requested dimensions, creating or resizing as needed. */
 function ensureCanvas(canvas: OffscreenCanvas | null, w: number, h: number): OffscreenCanvas {
@@ -217,37 +208,21 @@ function ensureCanvas(canvas: OffscreenCanvas | null, w: number, h: number): Off
 	return new OffscreenCanvas(w, h);
 }
 
-export function renderImageLayer(
-	img: HTMLImageElement,
-	canvasW: number,
-	canvasH: number,
-	fit: { scale: number; offsetX: number; offsetY: number },
-): OffscreenCanvas {
-	if (
-		imageLayerCanvas &&
-		cachedImageRef === img &&
-		cachedImageCanvasW === canvasW &&
-		cachedImageCanvasH === canvasH &&
-		cachedImageFitScale === fit.scale &&
-		cachedImageFitOffX === fit.offsetX &&
-		cachedImageFitOffY === fit.offsetY
-	) {
+export function renderImageLayer(img: HTMLImageElement): OffscreenCanvas {
+	if (imageLayerCanvas && cachedImageRef === img) {
 		return imageLayerCanvas;
 	}
 
-	imageLayerCanvas = ensureCanvas(imageLayerCanvas, canvasW, canvasH);
+	const w = img.naturalWidth;
+	const h = img.naturalHeight;
+	imageLayerCanvas = ensureCanvas(imageLayerCanvas, w, h);
 	const ctx = imageLayerCanvas.getContext('2d');
 	if (!ctx) return imageLayerCanvas;
 
-	ctx.clearRect(0, 0, canvasW, canvasH);
-	ctx.drawImage(img, fit.offsetX, fit.offsetY, img.naturalWidth * fit.scale, img.naturalHeight * fit.scale);
+	ctx.clearRect(0, 0, w, h);
+	ctx.drawImage(img, 0, 0);
 
 	cachedImageRef = img;
-	cachedImageCanvasW = canvasW;
-	cachedImageCanvasH = canvasH;
-	cachedImageFitScale = fit.scale;
-	cachedImageFitOffX = fit.offsetX;
-	cachedImageFitOffY = fit.offsetY;
 
 	return imageLayerCanvas;
 }
@@ -257,12 +232,7 @@ export function renderMaskLayer(
 	color: string,
 	opacity: number,
 	viewMode: string,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
 	img: HTMLImageElement | null,
-	canvasW: number,
-	canvasH: number,
 ): OffscreenCanvas | null {
 	if (
 		maskLayerCanvas &&
@@ -270,31 +240,28 @@ export function renderMaskLayer(
 		cachedMaskColor === color &&
 		cachedMaskOpacity === opacity &&
 		cachedMaskViewMode === viewMode &&
-		cachedMaskCanvasW === canvasW &&
-		cachedMaskCanvasH === canvasH &&
-		cachedMaskFitScale === scale &&
-		cachedMaskFitOffX === offsetX &&
-		cachedMaskFitOffY === offsetY &&
 		(viewMode !== 'cutout' || cachedMaskImageRef === img)
 	) {
 		return maskLayerCanvas;
 	}
 
-	maskLayerCanvas = ensureCanvas(maskLayerCanvas, canvasW, canvasH);
+	const w = mask.width;
+	const h = mask.height;
+	maskLayerCanvas = ensureCanvas(maskLayerCanvas, w, h);
 	const ctx = maskLayerCanvas.getContext('2d');
 	if (!ctx) return null;
 
-	ctx.clearRect(0, 0, canvasW, canvasH);
+	ctx.clearRect(0, 0, w, h);
 
 	if (viewMode === 'overlay') {
-		drawMaskOverlay(ctx, mask, color, opacity, scale, offsetX, offsetY);
+		drawMaskOverlay(ctx, mask, color, opacity);
 	} else if (viewMode === 'outline') {
-		// Reuse cached contours if the mask reference hasn't changed
 		if (cachedContourMaskRef !== mask) {
 			cachedContours = extractContours(mask);
 			cachedContourMaskRef = mask;
 		}
-		drawMaskOutline(ctx, mask, color, scale, offsetX, offsetY, cachedContours!);
+		// effScale = 1 inside the cached layer; strokes will scale with zoom
+		drawMaskOutline(ctx, mask, color, 1, cachedContours!);
 	} else if (viewMode === 'cutout' && img) {
 		if (mask.width !== img.naturalWidth || mask.height !== img.naturalHeight) {
 			console.warn(
@@ -311,7 +278,7 @@ export function renderMaskLayer(
 				imageData.data[i + 3] = mask.data[i + 3];
 			}
 			offCtx.putImageData(imageData, 0, 0);
-			ctx.drawImage(offscreen, offsetX, offsetY, img.naturalWidth * scale, img.naturalHeight * scale);
+			ctx.drawImage(offscreen, 0, 0);
 		}
 	}
 
@@ -319,11 +286,6 @@ export function renderMaskLayer(
 	cachedMaskColor = color;
 	cachedMaskOpacity = opacity;
 	cachedMaskViewMode = viewMode;
-	cachedMaskCanvasW = canvasW;
-	cachedMaskCanvasH = canvasH;
-	cachedMaskFitScale = scale;
-	cachedMaskFitOffX = offsetX;
-	cachedMaskFitOffY = offsetY;
 	cachedMaskImageRef = img;
 
 	return maskLayerCanvas;
@@ -332,38 +294,28 @@ export function renderMaskLayer(
 export function renderHoverDeltaLayer(
 	hoverMask: ImageData,
 	committedMask: ImageData | null,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
-	canvasW: number,
-	canvasH: number,
 ): OffscreenCanvas | null {
 	if (
 		hoverLayerCanvas &&
 		cachedHoverMaskRef === hoverMask &&
-		cachedCommittedMaskRef === committedMask &&
-		cachedHoverCanvasW === canvasW &&
-		cachedHoverCanvasH === canvasH &&
-		cachedHoverFitScale === scale &&
-		cachedHoverFitOffX === offsetX &&
-		cachedHoverFitOffY === offsetY
+		cachedCommittedMaskRef === committedMask
 	) {
 		return hoverLayerCanvas;
 	}
 
-	hoverLayerCanvas = ensureCanvas(hoverLayerCanvas, canvasW, canvasH);
+	const w = hoverMask.width;
+	const h = hoverMask.height;
+	hoverLayerCanvas = ensureCanvas(hoverLayerCanvas, w, h);
 	const ctx = hoverLayerCanvas.getContext('2d');
 	if (!ctx) return null;
 
-	ctx.clearRect(0, 0, canvasW, canvasH);
+	ctx.clearRect(0, 0, w, h);
 
 	if (!committedMask) {
 		// No committed mask — show the full hover mask with green tint at 30% opacity
-		drawMaskOverlay(ctx, hoverMask, '#22c55e', 0.3, scale, offsetX, offsetY);
+		drawMaskOverlay(ctx, hoverMask, '#22c55e', 0.3);
 	} else {
 		// Committed mask exists — compute additions-only delta
-		const w = hoverMask.width;
-		const h = hoverMask.height;
 		const deltaData = new ImageData(w, h);
 
 		let hasAdditions = false;
@@ -372,7 +324,6 @@ export function renderHoverDeltaLayer(
 			const hoverAlpha = hoverMask.data[pi + 3];
 			const committedAlpha = committedMask.data[pi + 3];
 			if (hoverAlpha > 128 && committedAlpha <= 128) {
-				// Addition pixel — green (#22c55e)
 				deltaData.data[pi] = 0x22;
 				deltaData.data[pi + 1] = 0xc5;
 				deltaData.data[pi + 2] = 0x5e;
@@ -382,14 +333,8 @@ export function renderHoverDeltaLayer(
 		}
 
 		if (!hasAdditions) {
-			// Update cache keys even when no additions so we don't recompute
 			cachedHoverMaskRef = hoverMask;
 			cachedCommittedMaskRef = committedMask;
-			cachedHoverCanvasW = canvasW;
-			cachedHoverCanvasH = canvasH;
-			cachedHoverFitScale = scale;
-			cachedHoverFitOffX = offsetX;
-			cachedHoverFitOffY = offsetY;
 			return null;
 		}
 
@@ -397,17 +342,12 @@ export function renderHoverDeltaLayer(
 		const deltaCtx = deltaCanvas.getContext('2d');
 		if (deltaCtx) {
 			deltaCtx.putImageData(deltaData, 0, 0);
-			ctx.drawImage(deltaCanvas, offsetX, offsetY, w * scale, h * scale);
+			ctx.drawImage(deltaCanvas, 0, 0);
 		}
 	}
 
 	cachedHoverMaskRef = hoverMask;
 	cachedCommittedMaskRef = committedMask;
-	cachedHoverCanvasW = canvasW;
-	cachedHoverCanvasH = canvasH;
-	cachedHoverFitScale = scale;
-	cachedHoverFitOffX = offsetX;
-	cachedHoverFitOffY = offsetY;
 
 	return hoverLayerCanvas;
 }
@@ -419,21 +359,11 @@ export function invalidateAllLayers(): void {
 	hoverLayerCanvas = null;
 
 	cachedImageRef = null;
-	cachedImageCanvasW = -1;
-	cachedImageCanvasH = -1;
-	cachedImageFitScale = -1;
-	cachedImageFitOffX = -1;
-	cachedImageFitOffY = -1;
 
 	cachedMaskRef = null;
 	cachedMaskColor = '';
 	cachedMaskOpacity = -1;
 	cachedMaskViewMode = '';
-	cachedMaskCanvasW = -1;
-	cachedMaskCanvasH = -1;
-	cachedMaskFitScale = -1;
-	cachedMaskFitOffX = -1;
-	cachedMaskFitOffY = -1;
 	cachedMaskImageRef = null;
 
 	cachedContours = null;
@@ -441,9 +371,4 @@ export function invalidateAllLayers(): void {
 
 	cachedHoverMaskRef = null;
 	cachedCommittedMaskRef = null;
-	cachedHoverCanvasW = -1;
-	cachedHoverCanvasH = -1;
-	cachedHoverFitScale = -1;
-	cachedHoverFitOffX = -1;
-	cachedHoverFitOffY = -1;
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { appState, resetPrompts, pushPromptState } from '$lib/stores/app-state.svelte';
-import { loadImageFromFile, computeFit, canvasToImageCoords } from '$lib/utils/image';
+import { loadImageFromFile, computeFit } from '$lib/utils/image';
 import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
 import {
 	drawPointMarker,
@@ -24,7 +24,14 @@ import {
 	cancelHoverDecode,
 	getHoverDebounceFloor,
 } from '$lib/stores/inference-pipeline.svelte';
-import type { PanzoomObject } from '@panzoom/panzoom';
+import {
+	type Viewport,
+	computeTransform,
+	screenToImageCoords,
+	zoomAtPoint,
+	resetViewport,
+	effectiveScale,
+} from '$lib/utils/viewport';
 import Upload from '@lucide/svelte/icons/upload';
 import ImageIcon from '@lucide/svelte/icons/image';
 import ZoomIn from '@lucide/svelte/icons/zoom-in';
@@ -44,16 +51,28 @@ const logger = getLogger(['websam', 'ui', 'canvas']);
 
 let canvasEl: HTMLCanvasElement | undefined = $state();
 let containerEl: HTMLDivElement | undefined = $state();
-let panzoomEl: HTMLDivElement | undefined = $state();
-let panzoomInstance: PanzoomObject | undefined = $state();
 let isDragging = $state(false);
 let dragStart: { x: number; y: number } | null = $state(null);
-let mousePos = $state({ x: 0, y: 0 });
 let isDropHover = $state(false);
 let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 let canvasWidth = $state(800);
 let canvasHeight = $state(600);
+
+let dpr = $state(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+let viewport = $state<Viewport>({ x: 0, y: 0, scale: 1 });
+let mouseImagePos = $state({ x: 0, y: 0 });
+let mouseCssPos = $state({ x: 0, y: 0 });
+let isPanning = $state(false);
+let panStart = $state({ x: 0, y: 0 });
+
+// DPR change listener
+$effect(() => {
+	const mql = matchMedia(`(resolution: ${dpr}dppx)`);
+	function onChange() { dpr = window.devicePixelRatio || 1; }
+	mql.addEventListener('change', onChange);
+	return () => mql.removeEventListener('change', onChange);
+});
 
 $effect(() => {
 	if (!containerEl) return;
@@ -71,72 +90,13 @@ $effect(() => {
 	return () => observer.disconnect();
 });
 
+// Wheel event with passive: false
 $effect(() => {
-	if (!panzoomEl || !containerEl) return;
-
-	const el = panzoomEl;
-	const container = containerEl;
-	let instance: PanzoomObject | undefined;
-
-	void import('@panzoom/panzoom').then(({ default: Panzoom }) => {
-		if (!el.isConnected) return;
-
-		instance = Panzoom(el, {
-			maxScale: 20,
-			minScale: 0.1,
-			contain: 'outside',
-			cursor: 'default',
-			handleStartEvent: (event: Event) => {
-				if (event instanceof MouseEvent && event.button === 1) {
-					event.preventDefault();
-					event.stopPropagation();
-				}
-			},
-			noBind: true,
-		});
-
-		el.addEventListener('pointerdown', onPointerDown);
-		document.addEventListener('pointermove', onPointerMove);
-		document.addEventListener('pointerup', onPointerUp);
-		container.addEventListener('wheel', onWheel, { passive: false });
-
-		panzoomInstance = instance;
-	});
-
-	function onPointerDown(event: PointerEvent) {
-		if (event.button !== 1) return;
-		event.preventDefault();
-		instance?.handleDown(event);
-	}
-	function onPointerMove(event: PointerEvent) {
-		instance?.handleMove(event);
-	}
-	function onPointerUp(event: PointerEvent) {
-		instance?.handleUp(event);
-	}
-	function onWheel(event: WheelEvent) {
-		instance?.zoomWithWheel(event);
-	}
-
-	return () => {
-		el.removeEventListener('pointerdown', onPointerDown);
-		document.removeEventListener('pointermove', onPointerMove);
-		document.removeEventListener('pointerup', onPointerUp);
-		container.removeEventListener('wheel', onWheel);
-		instance?.destroy();
-		panzoomInstance = undefined;
-	};
+	if (!containerEl) return;
+	const el = containerEl;
+	el.addEventListener('wheel', handleWheel, { passive: false });
+	return () => el.removeEventListener('wheel', handleWheel);
 });
-
-function screenToCanvasCoords(clientX: number, clientY: number): { x: number; y: number } {
-	const canvasRect = canvasEl!.getBoundingClientRect();
-	const scaleX = canvasRect.width / canvasEl!.width;
-	const scaleY = canvasRect.height / canvasEl!.height;
-	return {
-		x: (clientX - canvasRect.left) / scaleX,
-		y: (clientY - canvasRect.top) / scaleY,
-	};
-}
 
 const fit = $derived(
 	appState.currentImage
@@ -144,101 +104,123 @@ const fit = $derived(
 		: { scale: 1, offsetX: 0, offsetY: 0 },
 );
 
+// --- RAF-batched render loop ---
+
+let dirty = false;
+let rafId: number | null = null;
+
+function markDirty() {
+	if (!dirty) {
+		dirty = true;
+		rafId = requestAnimationFrame(render);
+	}
+}
+
+// Tracking effect — reads all reactive deps, calls markDirty
 $effect(() => {
+	void canvasEl;
+	void canvasWidth; void canvasHeight; void dpr; void viewport;
+	void appState.currentImage; void appState.maskResult;
+	void appState.maskViewMode; void appState.maskColor; void appState.maskOpacity;
+	void appState.hoverMask; void appState.hoverTriggerPos;
+	void appState.points; void appState.box;
+	void appState.interactionMode; void appState.everythingMasks;
+	void mouseImagePos; void mouseCssPos; void fit;
+	void appState.hoverPreviewEnabled;
+	markDirty();
+});
+
+// Cleanup RAF on unmount
+$effect(() => {
+	return () => { if (rafId !== null) cancelAnimationFrame(rafId); };
+});
+
+function render() {
+	dirty = false;
+	rafId = null;
 	if (!canvasEl) return;
 	const ctx = canvasEl.getContext('2d');
 	if (!ctx) return;
 
-	canvasEl.width = canvasWidth;
-	canvasEl.height = canvasHeight;
-	ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+	// Size canvas buffer for DPR
+	const bufferW = Math.floor(canvasWidth * dpr);
+	const bufferH = Math.floor(canvasHeight * dpr);
+	canvasEl.width = bufferW;
+	canvasEl.height = bufferH;
+
+	// Clear in buffer space
+	ctx.setTransform(1, 0, 0, 1, 0, 0);
+	ctx.clearRect(0, 0, bufferW, bufferH);
 
 	if (!appState.currentImage) return;
 
-	const { scale, offsetX, offsetY } = fit;
 	const img = appState.currentImage;
 	const mask = appState.maskResult?.masks[appState.maskResult.selectedIndex] ?? null;
+	const effScale = effectiveScale(fit, viewport);
 
-	const imgLayer = renderImageLayer(img, canvasWidth, canvasHeight, fit);
-	ctx.drawImage(imgLayer, 0, 0);
+	// Apply image-space transform
+	const t = computeTransform(fit, viewport, dpr);
+	ctx.setTransform(t.a, 0, 0, t.a, t.tx, t.ty);
 
+	// Draw image layer (cutout mode skips this)
+	if (!(mask && appState.maskViewMode === 'cutout')) {
+		const imgLayer = renderImageLayer(img);
+		ctx.drawImage(imgLayer, 0, 0);
+	}
+
+	// Everything mode masks
 	if (appState.everythingMasks.length > 0) {
 		for (const segment of appState.everythingMasks) {
-			drawMaskOverlay(ctx, segment.mask, segment.color, 0.4, scale, offsetX, offsetY);
+			drawMaskOverlay(ctx, segment.mask, segment.color, 0.4);
 		}
 	}
 
+	// Primary mask
 	if (mask && appState.maskViewMode === 'cutout') {
-		const cutoutLayer = renderMaskLayer(
-			mask,
-			appState.maskColor,
-			appState.maskOpacity,
-			'cutout',
-			scale,
-			offsetX,
-			offsetY,
-			img,
-			canvasWidth,
-			canvasHeight,
-		);
+		const cutoutLayer = renderMaskLayer(mask, appState.maskColor, appState.maskOpacity, 'cutout', img);
 		if (cutoutLayer) {
-			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 			ctx.drawImage(cutoutLayer, 0, 0);
 		}
 	} else if (mask) {
 		const maskLayer = renderMaskLayer(
-			mask,
-			appState.maskColor,
-			appState.maskOpacity,
-			appState.maskViewMode,
-			scale,
-			offsetX,
-			offsetY,
-			null,
-			canvasWidth,
-			canvasHeight,
+			mask, appState.maskColor, appState.maskOpacity, appState.maskViewMode, null
 		);
 		if (maskLayer) ctx.drawImage(maskLayer, 0, 0);
 	}
 
+	// Hover delta
 	if (appState.hoverMask && appState.interactionMode === 'point') {
-		const hoverLayer = renderHoverDeltaLayer(
-			appState.hoverMask,
-			mask,
-			scale,
-			offsetX,
-			offsetY,
-			canvasWidth,
-			canvasHeight,
-		);
+		const hoverLayer = renderHoverDeltaLayer(appState.hoverMask, mask);
 		if (hoverLayer) ctx.drawImage(hoverLayer, 0, 0);
 	}
 
+	// Hover trigger marker (image space)
 	if (appState.hoverMask && appState.hoverTriggerPos && appState.interactionMode === 'point') {
 		drawHoverTriggerMarker(
 			ctx,
 			appState.hoverTriggerPos.x,
 			appState.hoverTriggerPos.y,
-			mousePos.x,
-			mousePos.y,
-			scale,
-			offsetX,
-			offsetY,
+			mouseImagePos.x,
+			mouseImagePos.y,
+			effScale,
 		);
 	}
 
+	// Point markers (image space)
 	for (const point of appState.points) {
-		drawPointMarker(ctx, point, scale, offsetX, offsetY);
+		drawPointMarker(ctx, point, effScale);
 	}
 
+	// Box outline (image space)
 	if (appState.box) {
-		drawBoxOutline(ctx, appState.box, scale, offsetX, offsetY);
+		drawBoxOutline(ctx, appState.box, effScale);
 	}
 
+	// Crosshair (screen space -- drawCrosshair resets transform internally)
 	if (appState.interactionMode === 'point' && appState.currentImage) {
-		drawCrosshair(ctx, mousePos.x, mousePos.y);
+		drawCrosshair(ctx, mouseCssPos.x, mouseCssPos.y, dpr);
 	}
-});
+}
 
 $effect(() => {
 	function onLoadFile(e: Event) {
@@ -277,6 +259,7 @@ async function handleFileDrop(files: FileList | null) {
 		appState.currentImage = await loadImageFromFile(file);
 		resetPrompts();
 		clearEmbedding();
+		viewport = resetViewport();
 		await persistImage(file);
 		scheduleSave();
 		logger.info('Image loaded', {
@@ -294,11 +277,39 @@ async function handleFileDrop(files: FileList | null) {
 	}
 }
 
+function handleWheel(event: WheelEvent) {
+	event.preventDefault();
+	if (!canvasEl) return;
+	const rect = canvasEl.getBoundingClientRect();
+	const cssX = event.clientX - rect.left;
+	const cssY = event.clientY - rect.top;
+	const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+	viewport = zoomAtPoint(viewport, cssX, cssY, factor, 0.1, 20);
+}
+
+function handlePanStart(event: PointerEvent) {
+	if (event.button !== 1) return;
+	event.preventDefault();
+	isPanning = true;
+	panStart = { x: event.clientX - viewport.x, y: event.clientY - viewport.y };
+	(event.target as Element).setPointerCapture(event.pointerId);
+}
+
+function handlePanMove(event: PointerEvent) {
+	if (!isPanning) return;
+	viewport = { ...viewport, x: event.clientX - panStart.x, y: event.clientY - panStart.y };
+}
+
+function handlePanEnd(_event: PointerEvent) {
+	isPanning = false;
+}
+
 function handleCanvasClick(event: MouseEvent) {
+	if (isPanning) return;
 	cancelHoverDecode();
 	if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
 
-	if (!appState.currentImage) return;
+	if (!appState.currentImage || !canvasEl) return;
 	const phase = getPipelinePhase();
 	if (!getIsModelReady()) {
 		logger.warn(`Click ignored: pipeline is '${phase}'`);
@@ -309,10 +320,11 @@ function handleCanvasClick(event: MouseEvent) {
 		return;
 	}
 
+	const rect = canvasEl.getBoundingClientRect();
+	const { x, y } = screenToImageCoords(event.clientX, event.clientY, rect, fit, viewport);
+
 	// Everything mode: click to select a segment
-	if (appState.interactionMode === 'everything' && appState.everythingMasks.length > 0 && canvasEl) {
-		const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
-		const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
+	if (appState.interactionMode === 'everything' && appState.everythingMasks.length > 0) {
 		const imgX = Math.round(x);
 		const imgY = Math.round(y);
 
@@ -338,10 +350,6 @@ function handleCanvasClick(event: MouseEvent) {
 	}
 
 	if (appState.interactionMode !== 'point') return;
-	if (!canvasEl) return;
-
-	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
-	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
 
 	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) return;
 
@@ -361,11 +369,9 @@ function handleContextMenu(event: MouseEvent) {
 }
 
 function handleMouseDown(event: MouseEvent) {
-	if (appState.interactionMode !== 'box' || !appState.currentImage) return;
-	if (!canvasEl) return;
-
-	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
-	const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
+	if (appState.interactionMode !== 'box' || !appState.currentImage || !canvasEl) return;
+	const rect = canvasEl.getBoundingClientRect();
+	const { x, y } = screenToImageCoords(event.clientX, event.clientY, rect, fit, viewport);
 
 	pushPromptState();
 	isDragging = true;
@@ -376,15 +382,17 @@ function handleMouseDown(event: MouseEvent) {
 function handleMouseMove(event: MouseEvent) {
 	if (!canvasEl) return;
 
-	const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
-	mousePos = { x: cx, y: cy };
+	const rect = canvasEl.getBoundingClientRect();
+	const cssX = event.clientX - rect.left;
+	const cssY = event.clientY - rect.top;
+	mouseCssPos = { x: cssX, y: cssY };
+	mouseImagePos = screenToImageCoords(event.clientX, event.clientY, rect, fit, viewport);
 
 	if (isDragging && dragStart && appState.interactionMode === 'box') {
-		const { x, y } = canvasToImageCoords(mousePos.x, mousePos.y, fit.scale, fit.offsetX, fit.offsetY);
-		appState.box = { x1: dragStart.x, y1: dragStart.y, x2: x, y2: y };
+		appState.box = { x1: dragStart.x, y1: dragStart.y, x2: mouseImagePos.x, y2: mouseImagePos.y };
 	}
 
-	// Debounced hover decode — coordinate transform happens here, pipeline gets image-space coords
+	// Debounced hover decode
 	if (
 		appState.hoverPreviewEnabled &&
 		appState.interactionMode === 'point' &&
@@ -394,8 +402,7 @@ function handleMouseMove(event: MouseEvent) {
 	) {
 		if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
 		hoverDebounceTimer = setTimeout(() => {
-			const { x, y } = canvasToImageCoords(mousePos.x, mousePos.y, fit.scale, fit.offsetX, fit.offsetY);
-			scheduleHoverDecode(x, y);
+			scheduleHoverDecode(mouseImagePos.x, mouseImagePos.y);
 		}, getHoverDebounceFloor());
 	}
 }
@@ -442,14 +449,6 @@ const container = css({
 	display: 'flex',
 	alignItems: 'center',
 	justifyContent: 'center',
-});
-
-const panzoomWrapper = css({
-	position: 'absolute',
-	inset: '0',
-	w: 'full',
-	h: 'full',
-	transformOrigin: '50% 50%',
 });
 
 const canvasStyle = css({
@@ -547,22 +546,23 @@ const cursorBox = css({
 	aria-label="Image canvas"
 >
 	{#if appState.currentImage}
-		<div bind:this={panzoomEl} class={panzoomWrapper}>
-			<canvas
-				bind:this={canvasEl}
-				class={cx(canvasStyle, appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : '')}
-				onclick={handleCanvasClick}
-				oncontextmenu={handleContextMenu}
-				onmousedown={handleMouseDown}
-				onmousemove={handleMouseMove}
-				onmouseup={handleMouseUp}
-			></canvas>
-		</div>
+		<canvas
+			bind:this={canvasEl}
+			class={cx(canvasStyle, appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : '')}
+			onclick={handleCanvasClick}
+			oncontextmenu={handleContextMenu}
+			onmousedown={handleMouseDown}
+			onmousemove={handleMouseMove}
+			onmouseup={handleMouseUp}
+			onpointerdown={handlePanStart}
+			onpointermove={handlePanMove}
+			onpointerup={handlePanEnd}
+		></canvas>
 		<div class={zoomControls}>
 			<button
 				type="button"
 				class={zoomBtn}
-				onclick={() => panzoomInstance?.zoomIn()}
+				onclick={() => { viewport = zoomAtPoint(viewport, canvasWidth / 2, canvasHeight / 2, 1.5, 0.1, 20); }}
 				aria-label="Zoom in"
 			>
 				<ZoomIn size={16} />
@@ -570,7 +570,7 @@ const cursorBox = css({
 			<button
 				type="button"
 				class={zoomBtn}
-				onclick={() => panzoomInstance?.zoomOut()}
+				onclick={() => { viewport = zoomAtPoint(viewport, canvasWidth / 2, canvasHeight / 2, 1 / 1.5, 0.1, 20); }}
 				aria-label="Zoom out"
 			>
 				<ZoomOut size={16} />
@@ -578,7 +578,7 @@ const cursorBox = css({
 			<button
 				type="button"
 				class={zoomBtn}
-				onclick={() => panzoomInstance?.reset()}
+				onclick={() => { viewport = resetViewport(); }}
 				aria-label="Reset zoom"
 			>
 				<RotateCcw size={16} />

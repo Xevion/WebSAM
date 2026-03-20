@@ -57,22 +57,6 @@ export function computeFit(
 }
 
 /**
- * Convert canvas coordinates to image coordinates using the current transform.
- */
-export function canvasToImageCoords(
-	canvasX: number,
-	canvasY: number,
-	scale: number,
-	offsetX: number,
-	offsetY: number,
-): { x: number; y: number } {
-	return {
-		x: (canvasX - offsetX) / scale,
-		y: (canvasY - offsetY) / scale,
-	};
-}
-
-/**
  * Scale image-pixel coordinates to 1024x1024 model space.
  * SAM preprocessing scales the longest edge to 1024 and zero-pads the short edge,
  * so coordinates use a uniform scale factor based on the longest edge.
