@@ -10,10 +10,11 @@ interface Props {
 	onOpenChange: (open: boolean) => void;
 	title: string;
 	description?: string;
+	maxWidth?: string;
 	children: Snippet;
 }
 
-const { open, onOpenChange, title, description, children }: Props = $props();
+const { open, onOpenChange, title, description, maxWidth = '28rem', children }: Props = $props();
 
 const backdrop = css({
 	position: 'fixed',
@@ -40,7 +41,6 @@ const content = css({
 	borderRadius: 'xl',
 	boxShadow: 'lg',
 	p: '6',
-	maxW: '28rem',
 	w: 'full',
 	mx: '4',
 	_open: { animation: 'slide-fade-in 200ms ease-out' },
@@ -83,7 +83,7 @@ const closeBtn = css({
 	<Portal>
 		<Dialog.Backdrop class={backdrop} />
 		<Dialog.Positioner class={positioner}>
-			<Dialog.Content class={content}>
+			<Dialog.Content class={content} style="max-width: {maxWidth}">
 				<div class={header}>
 					<div>
 						<Dialog.Title class={titleStyle}>{title}</Dialog.Title>

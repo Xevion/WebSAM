@@ -1,0 +1,104 @@
+import type { DemoCollection } from './types';
+
+export const DEMO_COLLECTIONS: DemoCollection[] = [
+	{
+		id: 'showcase',
+		name: 'SAM Showcase',
+		description: 'Hand-picked images where SAM produces impressive results',
+		filter: {
+			type: 'ids',
+			ids: [
+				'golden-retriever', 'cat-portrait', 'parrot-branch', 'curly-hair-person',
+				'street-market', 'bicycle-wall', 'coral-reef', 'flower-bouquet',
+				'ornate-facade', 'food-platter', 'person-crowd', 'motorcycle',
+				'spider-web', 'tree-canopy', 'jewelry-stand', 'salad-bowl',
+				'cat-keyboard', 'soccer-kick', 'potted-succulent', 'hot-air-balloons',
+			],
+		},
+	},
+	{
+		id: 'edge-cases',
+		name: 'Edge Cases',
+		description: 'Challenging images that test SAM limits: transparent, reflective, camouflaged',
+		filter: {
+			type: 'tags',
+			tags: ['transparent', 'reflective', 'camouflage', 'thin-structures', 'smoke', 'ambiguous-boundary'],
+			mode: 'any',
+		},
+	},
+	{
+		id: 'non-photo',
+		name: 'Non-Photographic',
+		description: 'Illustrations, manga, pixel art, screenshots, and diagrams',
+		filter: {
+			type: 'tags',
+			tags: ['illustration', 'painting', 'manga', 'pixel-art', 'screenshot', 'diagram', '3d-render', 'meme'],
+			mode: 'any',
+		},
+	},
+	{
+		id: 'styles',
+		name: 'Photography Styles',
+		description: 'B&W, macro, bokeh, HDR, panoramic, and more',
+		filter: {
+			type: 'tags',
+			tags: ['grayscale', 'bokeh', 'hdr', 'panoramic', 'macro', 'vintage', 'wide-angle', 'telephoto'],
+			mode: 'any',
+		},
+	},
+	{
+		id: 'domain',
+		name: 'Domain-Specific',
+		description: 'Medical, satellite, thermal, and specialized imagery',
+		filter: {
+			type: 'tags',
+			tags: ['medical', 'satellite', 'thermal'],
+			mode: 'any',
+		},
+	},
+];
+
+export const TAG_GROUPS: { label: string; tags: string[] }[] = [
+	{
+		label: 'Subject',
+		tags: [
+			'person', 'animal', 'bird', 'insect', 'plant', 'flower', 'tree', 'food',
+			'vehicle', 'bicycle', 'architecture', 'furniture', 'clothing', 'jewelry',
+			'machinery', 'electronics', 'toy', 'sculpture', 'instrument',
+		],
+	},
+	{
+		label: 'Scene',
+		tags: [
+			'indoor', 'outdoor', 'underwater', 'aerial', 'urban', 'rural', 'studio',
+			'street', 'market', 'kitchen', 'workspace', 'nature', 'garden',
+		],
+	},
+	{
+		label: 'Challenge',
+		tags: [
+			'fur', 'feathers', 'hair', 'transparent', 'reflective', 'camouflage',
+			'thin-structures', 'dense-objects', 'overlapping', 'occluded', 'shadow',
+			'smoke', 'motion-blur', 'low-contrast', 'fine-detail', 'ambiguous-boundary',
+		],
+	},
+	{
+		label: 'Properties',
+		tags: [
+			'grayscale', 'high-key', 'low-key', 'bokeh', 'hdr', 'panoramic', 'tiny',
+			'huge', 'noisy', 'vintage', 'macro', 'telephoto', 'wide-angle',
+		],
+	},
+	{
+		label: 'Medium',
+		tags: [
+			'photograph', 'illustration', 'painting', 'digital-art', 'manga',
+			'pixel-art', 'screenshot', 'diagram', '3d-render', 'medical', 'satellite',
+			'thermal', 'document', 'meme',
+		],
+	},
+	{
+		label: 'Difficulty',
+		tags: ['easy', 'moderate', 'challenging', 'extreme'],
+	},
+];

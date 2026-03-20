@@ -20,9 +20,16 @@ import DownloadIcon from '@lucide/svelte/icons/download';
 import Copy from '@lucide/svelte/icons/copy';
 import ImageOff from '@lucide/svelte/icons/image-off';
 import Replace from '@lucide/svelte/icons/replace';
+import Grid2x2 from '@lucide/svelte/icons/grid-2x2';
 import { css } from 'styled-system/css';
 import { exportMask, exportCutout, copyMaskToClipboard } from '$lib/utils/export';
 import type { HTMLAttributes } from 'svelte/elements';
+
+interface Props {
+	onOpenGallery?: () => void;
+}
+
+const { onOpenGallery }: Props = $props();
 
 type TooltipProps = (p?: Record<string, unknown>) => HTMLAttributes<HTMLElement>;
 
@@ -114,6 +121,16 @@ function handleChangeImage(event: Event) {
 				<Sparkles size={14} />
 				Everything
 			</button>
+		{/snippet}
+	</Tooltip>
+
+	<Tooltip content="Demo gallery (G)">
+		{#snippet children(props: TooltipProps)}
+			<span {...props()}>
+				<Button size="icon-sm" variant="ghost" onclick={onOpenGallery}>
+					<Grid2x2 size={14} />
+				</Button>
+			</span>
 		{/snippet}
 	</Tooltip>
 

@@ -1,0 +1,422 @@
+{
+	"version": 1,
+	"images": [
+		{
+			"id": "golden-retriever",
+			"name": "Golden Retriever in Grass",
+			"description": "A golden retriever sitting in tall grass. Complex fur boundaries make this a great SAM showcase.",
+			"tags": [
+				"animal",
+				"fur",
+				"outdoor",
+				"easy",
+				"photograph",
+				"nature"
+			],
+			"width": 2000,
+			"height": 1335,
+			"fileSize": 204747,
+			"key": "demos/golden-retriever.jpg",
+			"source": {
+				"photographer": "Stefan Stefancik",
+				"url": "https://www.pexels.com/photo/light-golden-retriever-sitting-on-green-grass-during-daytime-92380/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "cat-portrait",
+			"name": "Cat Portrait Close-Up",
+			"description": "Close-up portrait of a cat. Whiskers and fur boundaries challenge precise segmentation.",
+			"tags": [
+				"animal",
+				"fur",
+				"macro",
+				"fine-detail",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 3000,
+			"fileSize": 375093,
+			"key": "demos/cat-portrait.jpg",
+			"source": {
+				"photographer": "Levent Simsek",
+				"url": "https://www.pexels.com/photo/brown-and-white-tabby-cat-5186141/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "parrot-branch",
+			"name": "Parrot on Branch",
+			"description": "A colorful parrot perched on a branch. Feather detail against foliage tests fine boundary detection.",
+			"tags": [
+				"bird",
+				"feathers",
+				"fine-detail",
+				"moderate",
+				"photograph",
+				"nature"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 247031,
+			"key": "demos/parrot-branch.jpg",
+			"source": {
+				"photographer": "Mikhail Nilov",
+				"url": "https://www.pexels.com/photo/blue-green-and-red-bird-on-brown-tree-branch-7722484/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "curly-hair-person",
+			"name": "Person with Curly Hair",
+			"description": "Portrait of a person with curly hair. Hair segmentation is the #1 real-world use case.",
+			"tags": [
+				"person",
+				"hair",
+				"challenging",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 3000,
+			"fileSize": 435563,
+			"key": "demos/curly-hair-person.jpg",
+			"source": {
+				"photographer": "Shovan Datta",
+				"url": "https://www.pexels.com/photo/photo-of-a-man-wearing-green-shirt-6467311/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "street-market",
+			"name": "Busy Street Market",
+			"description": "Overhead view of a colorful street market with produce stalls. Ideal for everything-mode segmentation.",
+			"tags": [
+				"food",
+				"market",
+				"dense-objects",
+				"outdoor",
+				"moderate",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1335,
+			"fileSize": 309741,
+			"key": "demos/street-market.jpg",
+			"source": {
+				"photographer": "Dipankar Layek",
+				"url": "https://www.pexels.com/photo/assorted-fruits-in-plastic-baskets-on-the-side-of-the-street-6753523/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "bicycle-wall",
+			"name": "Bicycle Against Wall",
+			"description": "A bicycle leaning against a textured wall. Thin spokes test fine structure segmentation.",
+			"tags": [
+				"bicycle",
+				"thin-structures",
+				"urban",
+				"challenging",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 280742,
+			"key": "demos/bicycle-wall.jpg",
+			"source": {
+				"photographer": "Atlantic Ambience",
+				"url": "https://www.pexels.com/photo/bicycles-parked-by-building-1539985/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "coral-reef",
+			"name": "Coral Reef",
+			"description": "Vibrant coral reef teeming with life. Organic complexity and dense overlapping structures.",
+			"tags": [
+				"underwater",
+				"dense-objects",
+				"fine-detail",
+				"photograph",
+				"nature"
+			],
+			"width": 2000,
+			"height": 1334,
+			"fileSize": 317223,
+			"key": "demos/coral-reef.jpg",
+			"source": {
+				"photographer": "Quang Nguyen Vinh",
+				"url": "https://www.pexels.com/photo/picturesque-coral-reef-on-seacoast-of-tropical-island-5116307/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "flower-bouquet",
+			"name": "Flower Bouquet",
+			"description": "A lush flower bouquet with overlapping petals. Tests segmentation of overlapping organic shapes.",
+			"tags": [
+				"flower",
+				"plant",
+				"fine-detail",
+				"overlapping",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 2999,
+			"fileSize": 399610,
+			"key": "demos/flower-bouquet.jpg",
+			"source": {
+				"photographer": "Andy Lee",
+				"url": "https://www.pexels.com/photo/colorful-flower-bouquets-with-orange-ribbon-36145954/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "ornate-facade",
+			"name": "Ornate Building Facade",
+			"description": "An ornate building facade with intricate architectural details and filigree.",
+			"tags": [
+				"architecture",
+				"outdoor",
+				"fine-detail",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 3000,
+			"fileSize": 806694,
+			"key": "demos/ornate-facade.jpg",
+			"source": {
+				"photographer": "Laura Tancredi",
+				"url": "https://www.pexels.com/photo/facade-of-old-building-with-ornamental-details-7078701/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "food-platter",
+			"name": "Food Platter Overhead",
+			"description": "An overhead shot of a food platter with many items. Clean boundaries and many distinct objects.",
+			"tags": [
+				"food",
+				"indoor",
+				"dense-objects",
+				"easy",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 403681,
+			"key": "demos/food-platter.jpg",
+			"source": {
+				"photographer": "cottonbro studio",
+				"url": "https://www.pexels.com/photo/variety-of-snacks-on-a-grazing-platter-4873686/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "person-crowd",
+			"name": "Person in Crowd",
+			"description": "A person in a crowd, partially occluded by others. Tests occlusion handling.",
+			"tags": [
+				"person",
+				"urban",
+				"overlapping",
+				"occluded",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 291012,
+			"key": "demos/person-crowd.jpg",
+			"source": {
+				"photographer": "Luis Quintero",
+				"url": "https://www.pexels.com/photo/photo-of-crowd-during-daytime-3892902/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "motorcycle",
+			"name": "Motorcycle",
+			"description": "A motorcycle with chrome details and complex shapes. Reflective surfaces challenge segmentation.",
+			"tags": [
+				"vehicle",
+				"reflective",
+				"fine-detail",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 257447,
+			"key": "demos/motorcycle.jpg",
+			"source": {
+				"photographer": "Tim Mossholder",
+				"url": "https://www.pexels.com/photo/harley-davidson-motorcycle-3076826/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "spider-web",
+			"name": "Spider Web with Dew",
+			"description": "A spider web glistening with dew drops. Ultra-fine structures at the extreme end of segmentation difficulty.",
+			"tags": [
+				"insect",
+				"thin-structures",
+				"macro",
+				"extreme",
+				"photograph",
+				"nature"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 74305,
+			"key": "demos/spider-web.jpg",
+			"source": {
+				"photographer": "Pixabay",
+				"url": "https://www.pexels.com/photo/silver-colored-bracelet-276218/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "tree-canopy",
+			"name": "Tree Canopy Looking Up",
+			"description": "Looking up through a tree canopy with leaves against sky. Complex organic branching patterns.",
+			"tags": [
+				"tree",
+				"nature",
+				"fine-detail",
+				"photograph",
+				"outdoor"
+			],
+			"width": 2000,
+			"height": 3000,
+			"fileSize": 1222718,
+			"key": "demos/tree-canopy.jpg",
+			"source": {
+				"photographer": "Letícia Alvares",
+				"url": "https://www.pexels.com/photo/tall-tree-canopy-against-blue-sky-36378041/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "jewelry-stand",
+			"name": "Jewelry on Stand",
+			"description": "Jewelry displayed on a stand with chains and gems. Fine detail and reflective surfaces.",
+			"tags": [
+				"jewelry",
+				"studio",
+				"fine-detail",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 2500,
+			"fileSize": 103676,
+			"key": "demos/jewelry-stand.jpg",
+			"source": {
+				"photographer": "Any Melnic",
+				"url": "https://www.pexels.com/photo/elegant-pearl-necklace-display-on-minimalist-stand-36609220/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "salad-bowl",
+			"name": "Bowl of Salad",
+			"description": "A bowl of salad with mixed textures and overlapping ingredients.",
+			"tags": [
+				"food",
+				"indoor",
+				"overlapping",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 147986,
+			"key": "demos/salad-bowl.jpg",
+			"source": {
+				"photographer": "Maksim Goncharenok",
+				"url": "https://www.pexels.com/photo/vegetable-salad-in-clear-glass-bowl-6163334/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "cat-keyboard",
+			"name": "Cat on Keyboard",
+			"description": "A cat sitting on or near a keyboard. Multiple subjects with different textures.",
+			"tags": [
+				"animal",
+				"electronics",
+				"fur",
+				"indoor",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 235561,
+			"key": "demos/cat-keyboard.jpg",
+			"source": {
+				"photographer": "Castorly Stock",
+				"url": "https://www.pexels.com/photo/black-and-white-computer-keyboard-4065748/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "soccer-kick",
+			"name": "Soccer Player Mid-Kick",
+			"description": "A soccer player captured mid-kick. Motion blur adds segmentation difficulty.",
+			"tags": [
+				"person",
+				"outdoor",
+				"motion-blur",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 292732,
+			"key": "demos/soccer-kick.jpg",
+			"source": {
+				"photographer": "Alessandro Ascione",
+				"url": "https://www.pexels.com/photo/players-playing-soccer-7512732/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "potted-succulent",
+			"name": "Potted Succulent",
+			"description": "A potted succulent plant in close-up. Clean subject with interesting geometric texture.",
+			"tags": [
+				"plant",
+				"macro",
+				"easy",
+				"photograph",
+				"nature"
+			],
+			"width": 2000,
+			"height": 2000,
+			"fileSize": 159450,
+			"key": "demos/potted-succulent.jpg",
+			"source": {
+				"photographer": "Nugroho  Wahyu",
+				"url": "https://www.pexels.com/photo/pot-plant-3101767/",
+				"license": "pexels"
+			}
+		},
+		{
+			"id": "hot-air-balloons",
+			"name": "Hot Air Balloons",
+			"description": "Colorful hot air balloons against a clear sky. Clear shapes and vivid colors make this an easy but striking demo.",
+			"tags": [
+				"vehicle",
+				"outdoor",
+				"easy",
+				"photograph"
+			],
+			"width": 2000,
+			"height": 1333,
+			"fileSize": 170883,
+			"key": "demos/hot-air-balloons.jpg",
+			"source": {
+				"photographer": "Lad Fury",
+				"url": "https://www.pexels.com/photo/low-angle-shot-of-airborne-multi-colored-hot-air-balloons-3091121/",
+				"license": "pexels"
+			}
+		}
+	]
+}

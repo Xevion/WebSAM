@@ -33,3 +33,7 @@ bun.lock
 
 # ONNX model files (downloaded for local dev)
 /models
+
+# Demo images (downloaded via scripts/download-demo-images.ts)
+/static/demos
+/static/demos/*.meta.json

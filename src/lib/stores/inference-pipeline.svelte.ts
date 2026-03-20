@@ -369,8 +369,10 @@ export function decodePrompts(points: Point[], box: Box | null): void {
 	} else if (pipeline.current === 'decoding') {
 		pendingDecode = { points: snappedPoints, box: snappedBox };
 		logger.info(`Decode queued: ${snappedPoints.length} points (superseding in-flight)`);
+	} else if (pipeline.current === 'model-ready' || pipeline.current === 'encoding') {
+		logger.warn(`decodePrompts rejected: image not yet encoded (pipeline is '${pipeline.current}')`);
 	} else {
-		logger.warn(`decodePrompts rejected: pipeline is '${pipeline.current}'`);
+		logger.error(`decodePrompts rejected: pipeline is '${pipeline.current}'`);
 	}
 }
 

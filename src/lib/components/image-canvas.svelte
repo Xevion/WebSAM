@@ -31,7 +31,14 @@ import ZoomIn from '@lucide/svelte/icons/zoom-in';
 import ZoomOut from '@lucide/svelte/icons/zoom-out';
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 import { getLogger } from '@logtape/logtape';
+import DemoStrip from '$lib/components/demo-strip.svelte';
 import { css, cx } from 'styled-system/css';
+
+interface Props {
+	onOpenGallery?: () => void;
+}
+
+const { onOpenGallery }: Props = $props();
 
 const logger = getLogger(['websam', 'ui', 'canvas']);
 
@@ -292,8 +299,13 @@ function handleCanvasClick(event: MouseEvent) {
 	if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
 
 	if (!appState.currentImage) return;
+	const phase = getPipelinePhase();
 	if (!getIsModelReady()) {
-		logger.warn(`Click ignored: pipeline is '${getPipelinePhase()}'`);
+		logger.warn(`Click ignored: pipeline is '${phase}'`);
+		return;
+	}
+	if (phase === 'model-ready' || phase === 'encoding') {
+		logger.warn(`Click ignored: image is still encoding (pipeline is '${phase}')`);
 		return;
 	}
 
@@ -507,6 +519,15 @@ const dropSub = css({
 	color: 'fg.subtle',
 });
 
+const emptyState = css({
+	display: 'flex',
+	flexDirection: 'column',
+	alignItems: 'center',
+	w: 'full',
+	maxW: '32rem',
+	gap: '6',
+});
+
 const cursorPoint = css({
 	cursor: 'crosshair',
 });
@@ -564,21 +585,24 @@ const cursorBox = css({
 			</button>
 		</div>
 	{:else}
-		<label class={`${dropZone} ${isDropHover ? dropZoneActive : ''}`}>
-			{#if isDropHover}
-				<Upload size={48} />
-				<span class={dropLabel}>Drop image here</span>
-			{:else}
-				<ImageIcon size={48} />
-				<span class={dropLabel}>Drop an image or click to browse</span>
-				<span class={dropSub}>Supports PNG, JPG, WebP</span>
-			{/if}
-			<input
-				type="file"
-				accept="image/*"
-				onchange={handleFileInput}
-				class={css({ position: 'absolute', opacity: 0, w: 0, h: 0 })}
-			/>
-		</label>
+		<div class={emptyState}>
+			<label class={`${dropZone} ${isDropHover ? dropZoneActive : ''}`}>
+				{#if isDropHover}
+					<Upload size={48} />
+					<span class={dropLabel}>Drop image here</span>
+				{:else}
+					<ImageIcon size={48} />
+					<span class={dropLabel}>Drop an image or click to browse</span>
+					<span class={dropSub}>Supports PNG, JPG, WebP</span>
+				{/if}
+				<input
+					type="file"
+					accept="image/*"
+					onchange={handleFileInput}
+					class={css({ position: 'absolute', opacity: 0, w: 0, h: 0 })}
+				/>
+			</label>
+			<DemoStrip onBrowseAll={() => onOpenGallery?.()} />
+		</div>
 	{/if}
 </div>

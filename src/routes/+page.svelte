@@ -6,17 +6,27 @@ import InferenceStatus from '$lib/components/inference-status.svelte';
 import ImageCanvas from '$lib/components/image-canvas.svelte';
 import Toolbar from '$lib/components/toolbar.svelte';
 import MaskControls from '$lib/components/mask-controls.svelte';
+import DemoGallery from '$lib/components/demo-gallery.svelte';
 import { getLogger } from '@logtape/logtape';
 import { errorMessage } from '$lib/utils/error';
 import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
-import { initShortcuts, shortcutHelp } from '$lib/stores/shortcuts.svelte';
+import { initShortcuts, shortcutHelp, galleryShortcut } from '$lib/stores/shortcuts.svelte';
 import ShortcutHelp from '$lib/components/shortcut-help.svelte';
 import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onWorkerError } from '$lib/inference/worker-api';
 import { selectModel, handleWorkerError, initPipelineEffects } from '$lib/stores/inference-pipeline.svelte';
 import { toaster } from '$lib/stores/toast.svelte';
 import { onMount } from 'svelte';
+
+let galleryOpen = $state(false);
+
+$effect(() => {
+	if (galleryShortcut.open) {
+		galleryOpen = true;
+		galleryShortcut.open = false;
+	}
+});
 
 const logger = getLogger(['websam', 'app']);
 
@@ -151,9 +161,9 @@ const helpButton = css({
 	</aside>
 
 	<div class={centerArea}>
-		<Toolbar />
+		<Toolbar onOpenGallery={() => { galleryOpen = true; }} />
 		<div class={canvasArea}>
-			<ImageCanvas />
+			<ImageCanvas onOpenGallery={() => { galleryOpen = true; }} />
 		</div>
 	</div>
 
@@ -167,3 +177,5 @@ const helpButton = css({
 </button>
 
 <ShortcutHelp open={shortcutHelp.open} onOpenChange={(v) => (shortcutHelp.open = v)} />
+
+<DemoGallery open={galleryOpen} onOpenChange={(o) => { galleryOpen = o; }} />
