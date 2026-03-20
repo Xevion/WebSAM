@@ -171,6 +171,34 @@ export function drawHoverTriggerMarker(
 	ctx.restore();
 }
 
+/**
+ * Draws a pulsing ring around the cursor position while hover inference is running.
+ * The ring's opacity animates sinusoidally to convey "working" without being distracting.
+ * All coordinates are in image pixel space.
+ */
+export function drawHoverInferenceRing(
+	ctx: CanvasRenderingContext2D,
+	imageX: number,
+	imageY: number,
+	effScale: number,
+): void {
+	const t = performance.now();
+	// Sinusoidal pulse: period ~800ms, alpha range [0.2, 0.6]
+	const pulse = Math.sin((t / 800) * Math.PI * 2);
+	const alpha = 0.4 + pulse * 0.2;
+
+	const radius = 12 / effScale;
+
+	ctx.save();
+	ctx.globalAlpha = alpha;
+	ctx.strokeStyle = 'oklch(0.72 0.17 180)';
+	ctx.lineWidth = 2 / effScale;
+	ctx.beginPath();
+	ctx.arc(imageX, imageY, radius, 0, Math.PI * 2);
+	ctx.stroke();
+	ctx.restore();
+}
+
 // ---------------------------------------------------------------------------
 // Layer caching — reused across frames to avoid allocation churn
 // ---------------------------------------------------------------------------

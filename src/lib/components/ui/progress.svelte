@@ -8,9 +8,11 @@ interface Props {
 	max?: number;
 	label?: string;
 	class?: string;
+	trackClass?: string;
+	rangeClass?: string;
 }
 
-const { value, max = 100, label, class: className }: Props = $props();
+const { value, max = 100, label, class: className, trackClass, rangeClass }: Props = $props();
 
 const root = css({
 	display: 'flex',
@@ -48,7 +50,7 @@ const range = css({
 			<Progress.ValueText />
 		</div>
 	{/if}
-	<Progress.Track class={track}>
-		<Progress.Range class={range} />
+	<Progress.Track class={trackClass ?? track}>
+		<Progress.Range class={rangeClass ?? range} />
 	</Progress.Track>
 </Progress.Root>

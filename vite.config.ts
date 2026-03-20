@@ -41,6 +41,8 @@ export default defineConfig({
 		plugins: () => [stripOrtWasm()],
 	},
 	server: {
+		host: true,
+		allowedHosts: ['lumine'],
 		fs: { allow: ['styled-system'] },
 	},
 });

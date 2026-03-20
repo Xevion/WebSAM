@@ -7,6 +7,7 @@ import {
 	drawBoxOutline,
 	drawCrosshair,
 	drawHoverTriggerMarker,
+	drawHoverInferenceRing,
 	drawMaskOverlay,
 	renderImageLayer,
 	renderMaskLayer,
@@ -23,6 +24,7 @@ import {
 	scheduleHoverDecode,
 	cancelHoverDecode,
 	getHoverDebounceFloor,
+	getHoverInferenceRunning,
 } from '$lib/stores/inference-pipeline.svelte';
 import {
 	type Viewport,
@@ -127,7 +129,20 @@ $effect(() => {
 	void appState.interactionMode; void appState.everythingMasks;
 	void mouseImagePos; void mouseCssPos; void fit;
 	void appState.hoverPreviewEnabled;
+	void getHoverInferenceRunning();
 	markDirty();
+});
+
+// Continuous rAF loop while hover inference is running (for pulse animation)
+$effect(() => {
+	if (!getHoverInferenceRunning()) return;
+	let animId: number;
+	function tick() {
+		markDirty();
+		animId = requestAnimationFrame(tick);
+	}
+	animId = requestAnimationFrame(tick);
+	return () => cancelAnimationFrame(animId);
 });
 
 // Cleanup RAF on unmount
@@ -219,6 +234,11 @@ function render() {
 	// Crosshair (screen space -- drawCrosshair resets transform internally)
 	if (appState.interactionMode === 'point' && appState.currentImage) {
 		drawCrosshair(ctx, mouseCssPos.x, mouseCssPos.y, dpr);
+	}
+
+	// Hover inference ring (image space — pulsing circle while decode is in-flight)
+	if (getHoverInferenceRunning() && appState.interactionMode === 'point') {
+		drawHoverInferenceRing(ctx, mouseImagePos.x, mouseImagePos.y, effScale);
 	}
 }
 

@@ -112,7 +112,10 @@ const api = {
 		downloadController?.abort();
 	},
 
-	async encode(imageData: RawImageData): Promise<EmbeddingInfo> {
+	async encode(
+		imageData: RawImageData,
+		onSubstage?: (stage: 'preprocessing' | 'inference') => void,
+	): Promise<EmbeddingInfo> {
 		return serialize(async () => {
 			logger.debug('Encoding image', { width: imageData.width, height: imageData.height });
 			const session = getSession();
@@ -120,7 +123,7 @@ const api = {
 				logger.error('Encode called without active session');
 				throw new Error('No active session');
 			}
-			cachedEmbedding = await encodeImage(session, imageData);
+			cachedEmbedding = await encodeImage(session, imageData, onSubstage);
 			logger.info('Image encoded', { embeddingType: cachedEmbedding.type });
 			return { type: cachedEmbedding.type, ready: true };
 		});

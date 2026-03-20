@@ -66,11 +66,16 @@ function preprocessImage(imageData: RawImageData): Float32Array {
  * The encoding is the expensive step (~500ms-25s depending on model and backend).
  * Results should be cached and reused for all decoder calls on the same image.
  */
-export async function encodeImage(session: OnnxSession, imageData: RawImageData): Promise<ImageEmbedding> {
+export async function encodeImage(
+	session: OnnxSession,
+	imageData: RawImageData,
+	onSubstage?: (stage: 'preprocessing' | 'inference') => void,
+): Promise<ImageEmbedding> {
 	const ort = await getOrt();
 	const family = session.model.family;
 	logger.debug('Starting encode', { family });
 	const t0 = performance.now();
+	onSubstage?.('preprocessing');
 	const inputTensor = preprocessImage(imageData);
 
 	if (family === 'sam1') {
@@ -81,6 +86,7 @@ export async function encodeImage(session: OnnxSession, imageData: RawImageData)
 			pixel_values: new ort.Tensor('float32', inputTensor, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]),
 		};
 
+		onSubstage?.('inference');
 		let results: Awaited<ReturnType<typeof session.encoderSession.run>>;
 		try {
 			results = await session.encoderSession.run(feeds);
@@ -104,6 +110,7 @@ export async function encodeImage(session: OnnxSession, imageData: RawImageData)
 		image: new ort.Tensor('float32', inputTensor, [1, 3, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]),
 	};
 
+	onSubstage?.('inference');
 	let results: Awaited<ReturnType<typeof session.encoderSession.run>>;
 	try {
 		results = await session.encoderSession.run(feeds);

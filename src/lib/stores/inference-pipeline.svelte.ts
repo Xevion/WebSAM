@@ -19,6 +19,11 @@ export const pipelineState = $state({
 	error: null as string | null,
 	lastEncodeMs: null as number | null,
 	lastDecodeMs: null as number | null,
+	encodeSubstage: null as 'preprocessing' | 'inference' | null,
+	emaEncodeMs: 3000,
+	emaDecodeMs: 200,
+	operationStartTime: null as number | null,
+	operationElapsedMs: 0,
 });
 
 /** Reusable Comlink proxy for download progress — avoids leaking a new proxy per model switch. */
@@ -30,10 +35,11 @@ const downloadProgressProxy = Comlink.proxy((p: DownloadProgress) => {
 let embedding = $state<EmbeddingInfo | null>(null);
 
 let decodeRequestId = 0;
-let pendingDecode: { points: Point[]; box: Box | null } | null = null;
+let pendingDecode_: { points: Point[]; box: Box | null } | null = null;
+let hasPendingDecode_ = $state(false);
 let hoverRequestId = 0;
 
-let hoverInferenceRunning = false;
+let hoverInferenceRunning = $state(false);
 let hoverPendingCoords: { x: number; y: number } | null = null;
 const EMA_ALPHA_DOWN = 0.5;
 const EMA_ALPHA_UP = 0.1;
@@ -49,6 +55,53 @@ export function getHoverDebounceFloor(): number {
 /** Current EMA hover latency estimate in ms. */
 export function getEmaHoverLatency(): number {
 	return Math.round(emaHoverLatency);
+}
+
+/** Whether a hover decode is currently in-flight. */
+export function getHoverInferenceRunning(): boolean {
+	return hoverInferenceRunning;
+}
+
+/** Whether a decode is queued behind the in-flight one. */
+export function getHasPendingDecode(): boolean {
+	return hasPendingDecode_;
+}
+
+function setPendingDecode(value: { points: Point[]; box: Box | null } | null): void {
+	pendingDecode_ = value;
+	hasPendingDecode_ = value !== null;
+}
+
+/** Update an EMA value with asymmetric alpha (fast down, slow up). */
+function updateEma(current: number, measured: number): number {
+	const alpha = measured < current ? EMA_ALPHA_DOWN : EMA_ALPHA_UP;
+	return alpha * measured + (1 - alpha) * current;
+}
+
+/** Reusable Comlink proxy for encode substage progress. */
+const encodeSubstageProxy = Comlink.proxy((stage: 'preprocessing' | 'inference') => {
+	pipelineState.encodeSubstage = stage;
+});
+
+let elapsedInterval: ReturnType<typeof setInterval> | null = null;
+
+function startElapsedTicker(): void {
+	pipelineState.operationStartTime = performance.now();
+	pipelineState.operationElapsedMs = 0;
+	if (elapsedInterval) clearInterval(elapsedInterval);
+	elapsedInterval = setInterval(() => {
+		if (pipelineState.operationStartTime !== null) {
+			pipelineState.operationElapsedMs = Math.round(performance.now() - pipelineState.operationStartTime);
+		}
+	}, 100);
+}
+
+function stopElapsedTicker(): void {
+	if (elapsedInterval) {
+		clearInterval(elapsedInterval);
+		elapsedInterval = null;
+	}
+	pipelineState.operationStartTime = null;
 }
 
 let rethresholdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -95,21 +148,34 @@ export const pipeline = new FiniteStateMachine<PipelinePhase, PipelineEvent>('no
 	},
 	encoding: {
 		_enter() {
+			startElapsedTicker();
+			pipelineState.encodeSubstage = null;
 			void performEncode();
 		},
 		done: 'ready',
 		fail: 'error',
 	},
 	ready: {
+		_enter() {
+			stopElapsedTicker();
+			pipelineState.encodeSubstage = null;
+		},
 		decode: 'decoding',
 		encode: 'encoding',
 	},
 	decoding: {
+		_enter() {
+			startElapsedTicker();
+		},
 		done: 'ready',
 		fail: 'error',
 		encode: 'encoding',
 	},
 	error: {
+		_enter() {
+			stopElapsedTicker();
+			pipelineState.encodeSubstage = null;
+		},
 		retry: () => {
 			if (appState.selectedModel) return 'downloading';
 			return 'no-model';
@@ -150,7 +216,7 @@ function cancelCurrentOperation(): void {
 	void getWorkerApi().cancelDownload();
 	hoverInferenceRunning = false;
 	hoverPendingCoords = null;
-	pendingDecode = null;
+	setPendingDecode(null);
 	if (rethresholdTimer) {
 		clearTimeout(rethresholdTimer);
 		rethresholdTimer = null;
@@ -208,10 +274,11 @@ async function performEncode(): Promise<void> {
 	const start = performance.now();
 	try {
 		const rawData = imageToRawData(appState.currentImage);
-		embedding = await withTimeout(api.encode(rawData), 120_000, 'encode');
+		embedding = await withTimeout(api.encode(rawData, encodeSubstageProxy), 120_000, 'encode');
 		if (pipeline.current !== 'encoding') return;
 		const elapsed = Math.round(performance.now() - start);
 		pipelineState.lastEncodeMs = elapsed;
+		pipelineState.emaEncodeMs = updateEma(pipelineState.emaEncodeMs, elapsed);
 		logger.info(`Image encoded in ${elapsed}ms`);
 		const postEncodePhase = sendEvent('done');
 
@@ -271,22 +338,23 @@ async function performDecode(points: Point[], box: Box | null): Promise<void> {
 		if (pipeline.current !== 'decoding') return;
 
 		const elapsed = Math.round(performance.now() - start);
-		if (!pendingDecode) {
+		if (!pendingDecode_) {
 			pipelineState.lastDecodeMs = elapsed;
+			pipelineState.emaDecodeMs = updateEma(pipelineState.emaDecodeMs, elapsed);
 			appState.maskResult = result;
 		}
-		logger.info(`Decode #${myId} complete in ${elapsed}ms${pendingDecode ? ' (superseded)' : ''}`);
+		logger.info(`Decode #${myId} complete in ${elapsed}ms${pendingDecode_ ? ' (superseded)' : ''}`);
 		drainOrComplete();
 	} catch (err) {
 		if (pipeline.current !== 'decoding') return;
 		const msg = errorMessage(err);
 		const isTimeout = msg.includes('timed out');
-		if (pendingDecode && !isTimeout) {
+		if (pendingDecode_ && !isTimeout) {
 			logger.warn(`Decode #${myId} failed (${msg}), trying queued decode`);
 			drainOrComplete();
 		} else {
-			if (pendingDecode) {
-				pendingDecode = null;
+			if (pendingDecode_) {
+				setPendingDecode(null);
 				logger.warn(`Decode #${myId} timed out, discarding queued decode`);
 			}
 			logger.error(`Decode failed: ${msg}`);
@@ -304,9 +372,9 @@ async function performDecode(points: Point[], box: Box | null): Promise<void> {
  * Drain the pending decode queue, or transition to ready if empty.
  */
 function drainOrComplete(): void {
-	if (pendingDecode && pipeline.current === 'decoding') {
-		const next = pendingDecode;
-		pendingDecode = null;
+	if (pendingDecode_ && pipeline.current === 'decoding') {
+		const next = pendingDecode_;
+		setPendingDecode(null);
 		void performDecode(next.points, next.box);
 	} else if (pipeline.current === 'decoding') {
 		sendEvent('done');
@@ -352,7 +420,7 @@ export function encodeCurrentImage(): void {
 		return;
 	}
 	embedding = null;
-	pendingDecode = null;
+	setPendingDecode(null);
 	sendEvent('encode');
 }
 
@@ -367,7 +435,7 @@ export function decodePrompts(points: Point[], box: Box | null): void {
 		sendEvent('decode');
 		void performDecode(snappedPoints, snappedBox);
 	} else if (pipeline.current === 'decoding') {
-		pendingDecode = { points: snappedPoints, box: snappedBox };
+		setPendingDecode({ points: snappedPoints, box: snappedBox });
 		logger.info(`Decode queued: ${snappedPoints.length} points (superseding in-flight)`);
 	} else if (pipeline.current === 'model-ready' || pipeline.current === 'encoding') {
 		logger.warn(`decodePrompts rejected: image not yet encoded (pipeline is '${pipeline.current}')`);

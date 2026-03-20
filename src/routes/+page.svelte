@@ -2,8 +2,8 @@
 import { appState } from '$lib/stores/app-state.svelte';
 import ModelPicker from '$lib/components/model-picker.svelte';
 import ModelDownload from '$lib/components/model-download.svelte';
-import InferenceStatus from '$lib/components/inference-status.svelte';
 import ImageCanvas from '$lib/components/image-canvas.svelte';
+import StatusBar from '$lib/components/status-bar.svelte';
 import Toolbar from '$lib/components/toolbar.svelte';
 import MaskControls from '$lib/components/mask-controls.svelte';
 import DemoGallery from '$lib/components/demo-gallery.svelte';
@@ -153,11 +153,6 @@ const helpButton = css({
 			</div>
 		{/if}
 
-		<div class={sidebarDivider}></div>
-
-		<div class={sidebarSection}>
-			<InferenceStatus />
-		</div>
 	</aside>
 
 	<div class={centerArea}>
@@ -165,6 +160,7 @@ const helpButton = css({
 		<div class={canvasArea}>
 			<ImageCanvas onOpenGallery={() => { galleryOpen = true; }} />
 		</div>
+		<StatusBar />
 	</div>
 
 	<aside class={rightPanel}>
