@@ -1,6 +1,7 @@
 <script lang="ts">
-import { appState, resetPrompts, undoLastPrompt, redoLastPrompt, clearImage } from '$lib/stores/app-state.svelte';
+import { appState, resetPrompts, clearImage } from '$lib/stores/app-state.svelte';
 import { promptHistory } from '$lib/stores/prompt-history.svelte';
+import { getIsModelReady, undoAndDecode, redoAndDecode, onImageRemoved } from '$lib/stores/inference-pipeline.svelte';
 import ToggleGroupComponent from '$lib/components/ui/toggle-group.svelte';
 import Tooltip from '$lib/components/ui/tooltip.svelte';
 import Button from '$lib/components/ui/button.svelte';
@@ -99,7 +100,7 @@ function handleChangeImage(event: Event) {
 						_hover: { color: 'fg', bg: 'bg.muted' },
 					}),
 					onclick: runEverythingMode,
-					disabled: !appState.isModelReady || !appState.currentImage,
+					disabled: !getIsModelReady() || !appState.currentImage,
 				})}
 			>
 				<Sparkles size={14} />
@@ -113,7 +114,7 @@ function handleChangeImage(event: Event) {
 	<Tooltip content="Undo (Ctrl+Z)">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
-				<Button size="icon-sm" variant="ghost" onclick={undoLastPrompt} disabled={!promptHistory.canUndo}>
+				<Button size="icon-sm" variant="ghost" onclick={undoAndDecode} disabled={!promptHistory.canUndo}>
 					<Undo2 size={14} />
 				</Button>
 			</span>
@@ -123,7 +124,7 @@ function handleChangeImage(event: Event) {
 	<Tooltip content="Redo (Ctrl+Shift+Z)">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
-				<Button size="icon-sm" variant="ghost" onclick={redoLastPrompt} disabled={!promptHistory.canRedo}>
+				<Button size="icon-sm" variant="ghost" onclick={redoAndDecode} disabled={!promptHistory.canRedo}>
 					<Redo2 size={14} />
 				</Button>
 			</span>
@@ -188,7 +189,7 @@ function handleChangeImage(event: Event) {
 	<Tooltip content="Remove image">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
-				<Button size="icon-sm" variant="ghost" onclick={clearImage} disabled={!hasImage}>
+				<Button size="icon-sm" variant="ghost" onclick={() => { onImageRemoved(); clearImage(); }} disabled={!hasImage}>
 					<ImageOff size={14} />
 				</Button>
 			</span>

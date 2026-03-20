@@ -185,7 +185,6 @@ let cachedMaskRef: ImageData | null = null;
 let cachedMaskColor = '';
 let cachedMaskOpacity = -1;
 let cachedMaskViewMode = '';
-let cachedMaskSelectedIndex = -1;
 let cachedMaskCanvasW = -1;
 let cachedMaskCanvasH = -1;
 let cachedMaskFitScale = -1;
@@ -297,14 +296,19 @@ export function renderMaskLayer(
 		}
 		drawMaskOutline(ctx, mask, color, scale, offsetX, offsetY, cachedContours!);
 	} else if (viewMode === 'cutout' && img) {
-		// Draw image masked by the mask alpha
+		if (mask.width !== img.naturalWidth || mask.height !== img.naturalHeight) {
+			console.warn(
+				`Cutout skipped: mask (${mask.width}x${mask.height}) != image (${img.naturalWidth}x${img.naturalHeight})`,
+			);
+			return null;
+		}
 		const offscreen = new OffscreenCanvas(img.naturalWidth, img.naturalHeight);
 		const offCtx = offscreen.getContext('2d');
 		if (offCtx) {
 			offCtx.drawImage(img, 0, 0);
 			const imageData = offCtx.getImageData(0, 0, img.naturalWidth, img.naturalHeight);
 			for (let i = 0; i < imageData.data.length; i += 4) {
-				imageData.data[i + 3] = mask.data[i + 3]!;
+				imageData.data[i + 3] = mask.data[i + 3];
 			}
 			offCtx.putImageData(imageData, 0, 0);
 			ctx.drawImage(offscreen, offsetX, offsetY, img.naturalWidth * scale, img.naturalHeight * scale);
@@ -425,7 +429,6 @@ export function invalidateAllLayers(): void {
 	cachedMaskColor = '';
 	cachedMaskOpacity = -1;
 	cachedMaskViewMode = '';
-	cachedMaskSelectedIndex = -1;
 	cachedMaskCanvasW = -1;
 	cachedMaskCanvasH = -1;
 	cachedMaskFitScale = -1;

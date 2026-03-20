@@ -1,5 +1,6 @@
 import { registerHotkey } from '@ramstack/hotkey';
-import { appState, resetPrompts, undoLastPrompt, redoLastPrompt } from './app-state.svelte';
+import { appState, resetPrompts } from './app-state.svelte';
+import { undoAndDecode, redoAndDecode } from './inference-pipeline.svelte';
 import { scheduleSave } from './persistence.svelte';
 import { exportMask, exportCutout } from '$lib/utils/export';
 
@@ -17,8 +18,8 @@ export function initShortcuts(): () => void {
 	const target = document.documentElement;
 
 	const cleanups = [
-		registerHotkey(target, 'ctrl+z', () => undoLastPrompt()),
-		registerHotkey(target, 'ctrl+shift+z', () => redoLastPrompt()),
+		registerHotkey(target, 'ctrl+z', () => undoAndDecode()),
+		registerHotkey(target, 'ctrl+shift+z', () => redoAndDecode()),
 		registerHotkey(target, 'escape', () => resetPrompts()),
 		registerHotkey(target, 'p', (e) => {
 			if (shouldIgnore(e)) return;

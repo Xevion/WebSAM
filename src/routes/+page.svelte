@@ -1,6 +1,5 @@
 <script lang="ts">
-import { untrack } from 'svelte';
-import { appState, requestDecode } from '$lib/stores/app-state.svelte';
+import { appState } from '$lib/stores/app-state.svelte';
 import ModelPicker from '$lib/components/model-picker.svelte';
 import ModelDownload from '$lib/components/model-download.svelte';
 import InferenceStatus from '$lib/components/inference-status.svelte';
@@ -14,7 +13,7 @@ import { browser } from '$app/environment';
 import { initShortcuts } from '$lib/stores/shortcuts.svelte';
 import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onWorkerError } from '$lib/inference/worker-api';
-import { initModel } from '$lib/stores/inference-pipeline.svelte';
+import { selectModel, handleWorkerError, initPipelineEffects } from '$lib/stores/inference-pipeline.svelte';
 import { toaster } from '$lib/stores/toast.svelte';
 import { onMount } from 'svelte';
 
@@ -26,13 +25,14 @@ if (browser) {
 }
 
 onMount(() => {
-	const cleanup = initShortcuts();
+	const cleanupShortcuts = initShortcuts();
+	const cleanupEffects = initPipelineEffects();
+
 	restoreSession()
 		.then(() => {
-			// After session restore, auto-init the model if one was selected
 			if (appState.selectedModel) {
 				logger.info('Auto-initializing restored model', { modelId: appState.selectedModel.id });
-				void initModel(appState.selectedModel);
+				selectModel(appState.selectedModel);
 			}
 		})
 		.catch((err: unknown) => {
@@ -42,54 +42,15 @@ onMount(() => {
 
 	const unsubWorkerError = onWorkerError((err: Error) => {
 		logger.error('Inference worker crashed', { error: err.message });
-		appState.isModelReady = false;
-		appState.inferenceProgress = {
-			stage: 'error',
-			error: `Worker crashed: ${err.message}`,
-		};
-		appState.downloadProgress = {
-			stage: 'error',
-			bytesDownloaded: 0,
-			totalBytes: 0,
-			error: 'Worker crashed. Select model to restart.',
-		};
+		handleWorkerError(err);
 		toaster.error({ title: 'Inference worker crashed', description: 'Select model to restart.' });
 	});
 
 	return () => {
-		cleanup();
+		cleanupShortcuts();
+		cleanupEffects();
 		unsubWorkerError();
 	};
-});
-
-// Effect 2: Auto-encode when model becomes ready and image is loaded but not yet encoded
-$effect(() => {
-	const ready = appState.isModelReady;
-	const hasImage = appState.currentImage !== null;
-	const hasEmbedding = appState.embedding !== null;
-
-	if (ready && hasImage && !hasEmbedding) {
-		logger.info('Auto-encoding: model ready with unencoded image');
-		untrack(() => {
-			window.dispatchEvent(new CustomEvent('websam:auto-encode'));
-		});
-	}
-});
-
-// Effect 3: Auto-decode when embedding becomes available and prompts exist
-$effect(() => {
-	const hasEmbedding = appState.embedding !== null;
-	const hasPrompts = appState.points.length > 0 || appState.box !== null;
-
-	if (hasEmbedding && hasPrompts) {
-		logger.info('Auto-decoding: embedding ready with existing prompts', {
-			numPoints: appState.points.length,
-			hasBox: appState.box !== null,
-		});
-		untrack(() => {
-			requestDecode();
-		});
-	}
 });
 
 const pageLayout = css({

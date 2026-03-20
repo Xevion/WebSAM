@@ -4,6 +4,12 @@ import { toaster } from '$lib/stores/toast.svelte';
 import X from '@lucide/svelte/icons/x';
 import { css } from 'styled-system/css';
 
+interface ToastData {
+	title?: string;
+	description?: string;
+	closable?: boolean;
+}
+
 const root = css({
 	bg: 'bg',
 	borderWidth: '1px',
@@ -60,7 +66,7 @@ const closeTrigger = css({
 
 <Toaster {toaster}>
 	{#snippet children(toast)}
-		{@const t = toast()}
+		{@const t = (toast as () => ToastData)()}
 		<Toast.Root class={root}>
 			<div class={body}>
 				{#if t.title}

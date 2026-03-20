@@ -93,7 +93,7 @@ export function restartWorker(): Comlink.Remote<InferenceWorkerApi> {
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
 	return new Promise<T>((resolve, reject) => {
 		const timer = setTimeout(() => {
-			logger.error('Worker call timed out', { label, timeoutMs: ms });
+			logger.error(`Worker call '${label}' timed out after ${(ms / 1000).toFixed(0)}s`);
 			reject(new Error(`Worker call '${label}' timed out after ${(ms / 1000).toFixed(0)}s`));
 		}, ms);
 

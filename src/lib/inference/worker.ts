@@ -32,64 +32,79 @@ let cachedDecodeResult: CachedDecodeResult | null = null;
 setupWorkerLogging();
 const logger = getLogger(['websam', 'inference', 'worker']);
 
+// Comlink does NOT serialize async handlers — if two messages arrive while the
+// first is awaiting, both run concurrently. This causes WebGPU stalls when
+// two session.run() calls overlap. This mutex ensures sequential execution.
+let workerBusy: Promise<void> = Promise.resolve();
+function serialize<T>(fn: () => Promise<T>): Promise<T> {
+	const task = workerBusy.then(fn);
+	workerBusy = task.then(
+		() => undefined,
+		() => undefined,
+	);
+	return task;
+}
+
 const api = {
 	async downloadAndInit(model: ModelInfo, onProgress: (progress: DownloadProgress) => void): Promise<void> {
-		await destroySession();
-		logger.debug('Previous session destroyed', { modelId: model.id });
-		cachedEmbedding = null;
-		cachedDecodeResult = null;
+		return serialize(async () => {
+			await destroySession();
+			logger.debug('Previous session destroyed', { modelId: model.id });
+			cachedEmbedding = null;
+			cachedDecodeResult = null;
 
-		const encoderFilename = `${model.id}-encoder`;
-		const decoderFilename = `${model.id}-decoder`;
+			const encoderFilename = `${model.id}-encoder`;
+			const decoderFilename = `${model.id}-decoder`;
 
-		// Check OPFS cache
-		const meta = await getCachedModelMeta(model.id);
-		let encoderBuffer: ArrayBuffer | null = null;
-		let decoderBuffer: ArrayBuffer | null = null;
+			// Check OPFS cache
+			const meta = await getCachedModelMeta(model.id);
+			let encoderBuffer: ArrayBuffer | null = null;
+			let decoderBuffer: ArrayBuffer | null = null;
 
-		if (meta) {
-			encoderBuffer = await readModelFile(meta.encoderFilename);
-			decoderBuffer = await readModelFile(meta.decoderFilename);
-		}
-		logger.debug('OPFS cache lookup', { modelId: model.id, cacheHit: !!(encoderBuffer && decoderBuffer) });
-
-		if (encoderBuffer && decoderBuffer) {
-			logger.info('Model loaded from cache', { modelId: model.id, totalSize: model.totalSize });
-			onProgress({ stage: 'initializing', bytesDownloaded: model.totalSize, totalBytes: model.totalSize });
-			await createSession(model, { encoderBuffer, decoderBuffer });
-			return;
-		}
-
-		// Cache miss: download and cache
-		logger.info('Cache miss, starting download', { modelId: model.id, totalSize: model.totalSize });
-		downloadController = new AbortController();
-		try {
-			const buffers = await downloadModel(model, onProgress, downloadController.signal);
-
-			// Write to OPFS in background while session initializes
-			const cachePromise = Promise.all([
-				writeModelFile(encoderFilename, buffers.encoderBuffer),
-				writeModelFile(decoderFilename, buffers.decoderBuffer),
-				setCachedModelMeta({
-					modelId: model.id,
-					encoderFilename,
-					decoderFilename,
-					totalSize: model.totalSize,
-					cachedAt: Date.now(),
-				}),
-			]);
-
-			await createSession(model, buffers);
-
-			// Finish caching after session is ready
-			try {
-				await cachePromise;
-			} catch (e) {
-				logger.warn('Model caching failed (session still active)', { modelId: model.id, error: String(e) });
+			if (meta) {
+				encoderBuffer = await readModelFile(meta.encoderFilename);
+				decoderBuffer = await readModelFile(meta.decoderFilename);
 			}
-		} finally {
-			downloadController = null;
-		}
+			logger.debug('OPFS cache lookup', { modelId: model.id, cacheHit: !!(encoderBuffer && decoderBuffer) });
+
+			if (encoderBuffer && decoderBuffer) {
+				logger.info('Model loaded from cache', { modelId: model.id, totalSize: model.totalSize });
+				onProgress({ stage: 'initializing', bytesDownloaded: model.totalSize, totalBytes: model.totalSize });
+				await createSession(model, { encoderBuffer, decoderBuffer });
+				return;
+			}
+
+			// Cache miss: download and cache
+			logger.info('Cache miss, starting download', { modelId: model.id, totalSize: model.totalSize });
+			downloadController = new AbortController();
+			try {
+				const buffers = await downloadModel(model, onProgress, downloadController.signal);
+
+				// Write to OPFS in background while session initializes
+				const cachePromise = Promise.all([
+					writeModelFile(encoderFilename, buffers.encoderBuffer),
+					writeModelFile(decoderFilename, buffers.decoderBuffer),
+					setCachedModelMeta({
+						modelId: model.id,
+						encoderFilename,
+						decoderFilename,
+						totalSize: model.totalSize,
+						cachedAt: Date.now(),
+					}),
+				]);
+
+				await createSession(model, buffers);
+
+				// Finish caching after session is ready
+				try {
+					await cachePromise;
+				} catch (e) {
+					logger.warn('Model caching failed (session still active)', { modelId: model.id, error: String(e) });
+				}
+			} finally {
+				downloadController = null;
+			}
+		});
 	},
 
 	cancelDownload(): void {
@@ -98,36 +113,43 @@ const api = {
 	},
 
 	async encode(imageData: RawImageData): Promise<EmbeddingInfo> {
-		logger.debug('Encoding image', { width: imageData.width, height: imageData.height });
-		const session = getSession();
-		if (!session) {
-			logger.error('Encode called without active session');
-			throw new Error('No active session');
-		}
-		cachedEmbedding = await encodeImage(session, imageData);
-		logger.info('Image encoded', { embeddingType: cachedEmbedding.type });
-		return { type: cachedEmbedding.type, ready: true };
+		return serialize(async () => {
+			logger.debug('Encoding image', { width: imageData.width, height: imageData.height });
+			const session = getSession();
+			if (!session) {
+				logger.error('Encode called without active session');
+				throw new Error('No active session');
+			}
+			cachedEmbedding = await encodeImage(session, imageData);
+			logger.info('Image encoded', { embeddingType: cachedEmbedding.type });
+			return { type: cachedEmbedding.type, ready: true };
+		});
 	},
 
 	async decode(prompt: PromptInput, options: DecoderOptions): Promise<MaskResult> {
-		logger.debug('Decoding mask', { hasPoints: !!prompt.points?.length, hasBox: !!prompt.box });
-		const session = getSession();
-		if (!session || !cachedEmbedding) {
-			logger.error('Decode called without session or embedding', {
-				hasSession: !!session,
-				hasEmbedding: !!cachedEmbedding,
-			});
-			throw new Error('No session or embedding');
-		}
-		const result = await decodeMask(session, cachedEmbedding, prompt, options);
-		logger.info('Mask decoded', { selectedIndex: result.selectedIndex });
-		cachedDecodeResult = {
-			rawLogits: result.rawLogits,
-			scores: [...result.scores],
-			selectedIndex: result.selectedIndex,
-			lowResMasks: result.lowResMasks,
-		};
-		return result;
+		return serialize(async () => {
+			const nPoints = prompt.points?.length ?? 0;
+			const hasBox = !!prompt.box;
+			logger.info(
+				`Decode received: ${nPoints} points, box=${hasBox}, output=${options.outputWidth}x${options.outputHeight}`,
+			);
+			const session = getSession();
+			if (!session || !cachedEmbedding) {
+				logger.error(`Decode rejected: session=${!!session}, embedding=${!!cachedEmbedding}`);
+				throw new Error('No session or embedding');
+			}
+			const t0 = performance.now();
+			const result = await decodeMask(session, cachedEmbedding, prompt, options);
+			const elapsed = Math.round(performance.now() - t0);
+			logger.info(`Mask decoded in ${elapsed}ms (selected=${result.selectedIndex})`);
+			cachedDecodeResult = {
+				rawLogits: result.rawLogits,
+				scores: [...result.scores],
+				selectedIndex: result.selectedIndex,
+				lowResMasks: result.lowResMasks,
+			};
+			return result;
+		});
 	},
 
 	rethreshold(threshold: number, smoothPasses: number, outputWidth: number, outputHeight: number): MaskResult | null {
@@ -148,10 +170,12 @@ const api = {
 	},
 
 	async destroy(): Promise<void> {
-		await destroySession();
-		cachedEmbedding = null;
-		cachedDecodeResult = null;
-		logger.debug('Worker session destroyed');
+		return serialize(async () => {
+			await destroySession();
+			cachedEmbedding = null;
+			cachedDecodeResult = null;
+			logger.debug('Worker session destroyed');
+		});
 	},
 
 	getEmbedding(): ImageEmbedding | null {

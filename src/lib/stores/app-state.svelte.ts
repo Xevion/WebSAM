@@ -1,12 +1,4 @@
-import type {
-	ModelInfo,
-	Point,
-	Box,
-	MaskResult,
-	DownloadProgress,
-	InferenceProgress,
-	EmbeddingInfo,
-} from '$lib/inference/types';
+import type { ModelInfo, Point, Box, MaskResult } from '$lib/inference/types';
 import { getLogger } from '@logtape/logtape';
 import { promptHistory } from './prompt-history.svelte';
 import { scheduleSave } from './persistence.svelte';
@@ -16,8 +8,6 @@ const logger = getLogger(['websam', 'app', 'state']);
 
 export const appState = $state({
 	selectedModel: null as ModelInfo | null,
-	downloadProgress: { stage: 'idle', bytesDownloaded: 0, totalBytes: 0 } as DownloadProgress,
-	isModelReady: false,
 
 	currentImage: null as HTMLImageElement | null,
 	imageFile: null as File | null,
@@ -26,11 +16,7 @@ export const appState = $state({
 	points: [] as Point[],
 	box: null as Box | null,
 
-	/** Cached image embedding from the encoder, cleared on image change. */
-	embedding: null as EmbeddingInfo | null,
-
 	maskResult: null as MaskResult | null,
-	inferenceProgress: { stage: 'idle' } as InferenceProgress,
 	maskOpacity: 0.5,
 	maskColor: '#6366f1',
 	maskViewMode: 'overlay' as 'overlay' | 'outline' | 'cutout',
@@ -45,9 +31,6 @@ export const appState = $state({
 	hoverTriggerPos: null as { x: number; y: number } | null,
 
 	webgpuAvailable: false,
-
-	/** Bumped by undo/redo to trigger a decoder re-run. */
-	decodeGeneration: 0,
 });
 
 export function resetPrompts(): void {
@@ -57,13 +40,8 @@ export function resetPrompts(): void {
 	appState.maskResult = null;
 	appState.maskThreshold = 0.0;
 	appState.maskSmoothPasses = 0;
-	appState.inferenceProgress = { stage: 'idle' };
 	logger.debug('Prompts reset');
 	scheduleSave();
-}
-
-export function clearEmbedding(): void {
-	appState.embedding = null;
 }
 
 export function pushPromptState(): void {
@@ -78,7 +56,6 @@ export function undoLastPrompt(): void {
 	appState.points = prevState.points;
 	appState.box = prevState.box;
 	logger.debug('Prompt undone', { restoredPoints: prevState.points.length });
-	requestDecode();
 }
 
 export function redoLastPrompt(): void {
@@ -89,18 +66,12 @@ export function redoLastPrompt(): void {
 	appState.points = nextState.points;
 	appState.box = nextState.box;
 	logger.debug('Prompt redone', { restoredPoints: nextState.points.length });
-	requestDecode();
-}
-
-export function requestDecode() {
-	appState.decodeGeneration++;
 }
 
 export function clearImage(): void {
 	logger.info('Image cleared');
 	appState.currentImage = null;
 	appState.imageFile = null;
-	appState.embedding = null;
 	appState.hoverMask = null;
 	appState.hoverTriggerPos = null;
 	resetPrompts();

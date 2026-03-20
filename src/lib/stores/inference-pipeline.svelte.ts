@@ -1,83 +1,554 @@
+import { FiniteStateMachine } from 'runed';
 import { getLogger } from '@logtape/logtape';
-import { appState, clearEmbedding } from './app-state.svelte';
+import { appState, undoLastPrompt, redoLastPrompt } from './app-state.svelte';
 import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
+import { imageToRawData } from '$lib/utils/image';
 import { errorMessage } from '$lib/utils/error';
-import { isModelCached } from '$lib/inference/download';
+import { toaster } from '$lib/stores/toast.svelte';
 import * as Comlink from 'comlink';
-import type { ModelInfo } from '$lib/inference/types';
+import type { ModelInfo, Point, Box, DownloadProgress, EmbeddingInfo } from '$lib/inference/types';
 
 const logger = getLogger(['websam', 'pipeline']);
 
+export type PipelinePhase = 'no-model' | 'downloading' | 'model-ready' | 'encoding' | 'ready' | 'decoding' | 'error';
+
+type PipelineEvent = 'select' | 'complete' | 'encode' | 'done' | 'decode' | 'fail' | 'cancel' | 'retry' | 'reset';
+
+export const pipelineState = $state({
+	downloadProgress: { stage: 'idle', bytesDownloaded: 0, totalBytes: 0 } as DownloadProgress,
+	error: null as string | null,
+	lastEncodeMs: null as number | null,
+	lastDecodeMs: null as number | null,
+});
+
+/** Reusable Comlink proxy for download progress — avoids leaking a new proxy per model switch. */
+const downloadProgressProxy = Comlink.proxy((p: DownloadProgress) => {
+	pipelineState.downloadProgress = p;
+});
+
+/** Embedding confirmation from the worker -- module-private, exposed via hasEmbedding. */
+let embedding = $state<EmbeddingInfo | null>(null);
+
+let decodeRequestId = 0;
+let pendingDecode: { points: Point[]; box: Box | null } | null = null;
+let hoverRequestId = 0;
+
+let hoverInferenceRunning = false;
+let hoverPendingCoords: { x: number; y: number } | null = null;
+const EMA_ALPHA = 0.2;
+let emaHoverLatency = 150;
+
+/** Adaptive debounce floor: ~30% of measured decode latency, clamped to [16, 300]ms */
+export function getHoverDebounceFloor(): number {
+	return Math.max(16, Math.min(300, Math.round(emaHoverLatency * 0.3)));
+}
+
+let rethresholdTimer: ReturnType<typeof setTimeout> | null = null;
+
 /**
- * Initiates model download (or cache-load) and ONNX session creation.
- * Safe to call multiple times; will cancel any in-flight download first.
+ * Send an event to the FSM with automatic transition logging.
+ * All FSM interactions go through this to ensure visibility.
  */
-export async function initModel(model: ModelInfo): Promise<void> {
+function sendEvent(event: PipelineEvent): PipelinePhase {
+	const from = pipeline.current;
+	const result = pipeline.send(event);
+	if (result !== from) {
+		logger.info(`${from} -> ${result} (${event})`);
+	} else {
+		logger.debug(`Event '${event}' ignored in '${from}'`);
+	}
+	return result;
+}
+
+export const pipeline = new FiniteStateMachine<PipelinePhase, PipelineEvent>('no-model', {
+	'no-model': {
+		select: 'downloading',
+	},
+	downloading: {
+		_enter() {
+			void performDownload();
+		},
+		complete: 'model-ready',
+		fail: 'error',
+		cancel: 'no-model',
+	},
+	'model-ready': {
+		_enter() {
+			if (appState.currentImage && !embedding) {
+				// Defer to avoid nested FSM transition during downloading._enter chain
+				queueMicrotask(() => encodeCurrentImage());
+			}
+		},
+		encode: 'encoding',
+		select: () => {
+			cancelCurrentOperation();
+			return undefined;
+		},
+	},
+	encoding: {
+		_enter() {
+			void performEncode();
+		},
+		done: 'ready',
+		fail: 'error',
+	},
+	ready: {
+		decode: 'decoding',
+		encode: 'encoding',
+	},
+	decoding: {
+		done: 'ready',
+		fail: 'error',
+		encode: 'encoding',
+	},
+	error: {
+		retry: () => {
+			if (appState.selectedModel) return 'downloading';
+			return 'no-model';
+		},
+		select: () => undefined,
+		reset: 'no-model',
+	},
+	'*': {
+		reset: 'no-model',
+	},
+});
+
+const isModelReady_ = $derived(
+	pipeline.current === 'model-ready' ||
+		pipeline.current === 'encoding' ||
+		pipeline.current === 'ready' ||
+		pipeline.current === 'decoding',
+);
+
+const canHoverDecode_ = $derived(pipeline.current === 'ready' && appState.currentImage !== null);
+
+/** Whether the model is loaded and ready for inference. */
+export function getIsModelReady(): boolean {
+	return isModelReady_;
+}
+
+/** Whether hover decode is possible. */
+export function getCanHoverDecode(): boolean {
+	return canHoverDecode_;
+}
+
+/** Current pipeline phase (for diagnostics). */
+export function getPipelinePhase(): PipelinePhase {
+	return pipeline.current;
+}
+
+function cancelCurrentOperation(): void {
+	void getWorkerApi().cancelDownload();
+	hoverInferenceRunning = false;
+	hoverPendingCoords = null;
+	pendingDecode = null;
+	if (rethresholdTimer) {
+		clearTimeout(rethresholdTimer);
+		rethresholdTimer = null;
+	}
+}
+
+async function performDownload(): Promise<void> {
+	const model = appState.selectedModel;
+	if (!model) {
+		logger.error('performDownload called without selected model');
+		return;
+	}
 	const snapshot = $state.snapshot(model);
-	logger.info('Initializing model', { modelId: snapshot.id, totalSize: snapshot.totalSize });
+	logger.info(`Starting model download/init: ${snapshot.id}`);
 
 	const api = getWorkerApi();
-
 	try {
-		appState.isModelReady = false;
-		clearEmbedding();
-
 		await withTimeout(
-			api.downloadAndInit(
-				snapshot,
-				Comlink.proxy((p) => {
-					appState.downloadProgress = p;
-				}),
-			),
+			api.downloadAndInit(snapshot, downloadProgressProxy),
 			300_000,
 			'downloadAndInit',
 		);
-		appState.downloadProgress = {
+		pipelineState.downloadProgress = {
 			stage: 'ready',
 			bytesDownloaded: snapshot.totalSize,
 			totalBytes: snapshot.totalSize,
 		};
-		appState.isModelReady = true;
-		logger.info('Model ready', { modelId: snapshot.id });
+		if (pipeline.current === 'downloading') {
+			sendEvent('complete');
+		}
 	} catch (err) {
+		if (pipeline.current !== 'downloading') return;
 		if (err instanceof DOMException && err.name === 'AbortError') {
-			logger.info('Model init aborted', { modelId: snapshot.id });
-			appState.downloadProgress = {
-				stage: 'idle',
-				bytesDownloaded: 0,
-				totalBytes: snapshot.totalSize,
-			};
+			logger.info(`Model init aborted: ${snapshot.id}`);
+			sendEvent('cancel');
 		} else {
-			logger.error('Model init failed', {
-				modelId: snapshot.id,
-				error: errorMessage(err),
-			});
-			appState.downloadProgress = {
+			logger.error(`Model init failed: ${snapshot.id} - ${errorMessage(err)}`);
+			pipelineState.error = err instanceof Error ? err.message : 'Unknown error';
+			pipelineState.downloadProgress = {
 				stage: 'error',
 				bytesDownloaded: 0,
 				totalBytes: 0,
-				error: err instanceof Error ? err.message : 'Unknown error',
+				error: pipelineState.error,
 			};
+			sendEvent('fail');
 		}
 	}
 }
 
-export function cancelModelInit(): void {
-	logger.info('Model init cancellation requested');
+async function performEncode(): Promise<void> {
+	if (!appState.currentImage) return;
+
+	logger.info('Starting image encode');
+	const api = getWorkerApi();
+	const start = performance.now();
+	try {
+		const rawData = imageToRawData(appState.currentImage);
+		embedding = await withTimeout(api.encode(rawData), 120_000, 'encode');
+		if (pipeline.current !== 'encoding') return;
+		const elapsed = Math.round(performance.now() - start);
+		pipelineState.lastEncodeMs = elapsed;
+		logger.info(`Image encoded in ${elapsed}ms`);
+		const postEncodePhase = sendEvent('done');
+
+		// Auto-decode if prompts exist (e.g. session restore with saved points)
+		if (postEncodePhase === 'ready' && (appState.points.length > 0 || appState.box)) {
+			logger.info('Auto-decoding: prompts exist after encode');
+			decodePrompts(appState.points, appState.box);
+		}
+	} catch (err) {
+		if (pipeline.current !== 'encoding') return;
+		logger.error(`Image encoding failed: ${errorMessage(err)}`);
+		pipelineState.error = err instanceof Error ? err.message : 'Encoding failed';
+		sendEvent('fail');
+	}
+}
+
+async function performDecode(points: Point[], box: Box | null): Promise<void> {
+	if (!embedding || !appState.currentImage) {
+		logger.warn(`performDecode called without ${!embedding ? 'embedding' : 'image'}`);
+		drainOrComplete();
+		return;
+	}
+	const currentImage = appState.currentImage;
+
+	const myId = ++decodeRequestId;
+	logger.info(
+		`Decode #${myId}: ${points.length} points, box=${!!box}, ${currentImage.naturalWidth}x${currentImage.naturalHeight}`,
+	);
+	const api = getWorkerApi();
+	const start = performance.now();
+
+	try {
+		const previousMask = appState.maskResult?.lowResMasks ?? null;
+		let maskInput: Float32Array | null = null;
+		if (previousMask && appState.maskResult) {
+			const idx = appState.maskResult.selectedIndex;
+			maskInput = new Float32Array(256 * 256);
+			maskInput.set(previousMask.subarray(idx * 256 * 256, (idx + 1) * 256 * 256));
+		}
+
+		const result = await withTimeout(
+			api.decode(
+				{
+					points: points.length > 0 ? points : undefined,
+					box: box ?? undefined,
+				},
+				{
+					maskInput,
+					outputWidth: currentImage.naturalWidth,
+					outputHeight: currentImage.naturalHeight,
+				},
+			),
+			10_000,
+			'decode',
+		);
+
+		if (pipeline.current !== 'decoding') return;
+
+		const elapsed = Math.round(performance.now() - start);
+		if (!pendingDecode) {
+			pipelineState.lastDecodeMs = elapsed;
+			appState.maskResult = result;
+		}
+		logger.info(`Decode #${myId} complete in ${elapsed}ms${pendingDecode ? ' (superseded)' : ''}`);
+		drainOrComplete();
+	} catch (err) {
+		if (pipeline.current !== 'decoding') return;
+		const msg = errorMessage(err);
+		const isTimeout = msg.includes('timed out');
+		if (pendingDecode && !isTimeout) {
+			logger.warn(`Decode #${myId} failed (${msg}), trying queued decode`);
+			drainOrComplete();
+		} else {
+			if (pendingDecode) {
+				pendingDecode = null;
+				logger.warn(`Decode #${myId} timed out, discarding queued decode`);
+			}
+			logger.error(`Decode failed: ${msg}`);
+			pipelineState.error = err instanceof Error ? err.message : 'Decoding failed';
+			toaster.error({
+				title: isTimeout ? 'Worker unresponsive' : 'Decode failed',
+				description: isTimeout ? 'The inference worker stopped responding. Try clicking again or reload.' : msg,
+			});
+			sendEvent('fail');
+		}
+	}
+}
+
+/**
+ * Drain the pending decode queue, or transition to ready if empty.
+ */
+function drainOrComplete(): void {
+	if (pendingDecode && pipeline.current === 'decoding') {
+		const next = pendingDecode;
+		pendingDecode = null;
+		void performDecode(next.points, next.box);
+	} else if (pipeline.current === 'decoding') {
+		sendEvent('done');
+	}
+}
+
+/**
+ * Select and initialize a model. Safe to call from any state --
+ * cancels in-flight work and restarts the pipeline.
+ */
+export function selectModel(model: ModelInfo): void {
+	resetPipeline();
+	appState.selectedModel = model;
+	pipelineState.downloadProgress = { stage: 'idle', bytesDownloaded: 0, totalBytes: model.totalSize };
+	sendEvent('select');
+}
+
+/** Cancel an in-flight model download. */
+export function cancelDownload(): void {
+	logger.info('Download cancellation requested');
 	void getWorkerApi().cancelDownload();
 }
 
-/**
- * Retry after an error: just calls initModel again with the current selection.
- */
-export function retryModelInit(): void {
-	if (!appState.selectedModel) return;
-	void initModel(appState.selectedModel);
+/** Retry from error state -- re-downloads the selected model. */
+export function retryFromError(): void {
+	if (pipeline.current !== 'error') return;
+	pipelineState.error = null;
+	sendEvent('retry');
 }
 
 /**
- * Check if the selected model's weights are cached in OPFS.
+ * Encode the current image. Called after image load when model is ready.
+ * Also called by the auto-trigger in model-ready._enter.
+ *
+ * Accepts model-ready, ready, and decoding phases -- the FSM supports
+ * encode transitions from all three.
  */
-export async function checkModelCached(modelId: string): Promise<boolean> {
-	return isModelCached(modelId);
+export function encodeCurrentImage(): void {
+	if (!appState.currentImage) return;
+	const phase = pipeline.current;
+	if (phase !== 'model-ready' && phase !== 'ready' && phase !== 'decoding') {
+		logger.warn(`encodeCurrentImage rejected: pipeline is '${phase}'`);
+		return;
+	}
+	embedding = null;
+	pendingDecode = null;
+	sendEvent('encode');
+}
+
+/**
+ * Run the decoder with the given prompts. Handles both initial decode
+ * (from ready state) and re-decode (while already decoding).
+ */
+export function decodePrompts(points: Point[], box: Box | null): void {
+	const snappedPoints = $state.snapshot(points);
+	const snappedBox = box ? $state.snapshot(box) : null;
+	if (pipeline.current === 'ready') {
+		sendEvent('decode');
+		void performDecode(snappedPoints, snappedBox);
+	} else if (pipeline.current === 'decoding') {
+		pendingDecode = { points: snappedPoints, box: snappedBox };
+		logger.info(`Decode queued: ${snappedPoints.length} points (superseding in-flight)`);
+	} else {
+		logger.warn(`decodePrompts rejected: pipeline is '${pipeline.current}'`);
+	}
+}
+
+/** Undo last prompt and re-run decoder. */
+export function undoAndDecode(): void {
+	undoLastPrompt();
+	decodePrompts(appState.points, appState.box);
+}
+
+/** Redo last prompt and re-run decoder. */
+export function redoAndDecode(): void {
+	redoLastPrompt();
+	decodePrompts(appState.points, appState.box);
+}
+
+/** Notify the pipeline that the image was removed (clears embedding + hover state). */
+export function onImageRemoved(): void {
+	embedding = null;
+	cancelHoverDecode();
+}
+
+/** Clear the embedding (e.g. when image changes). */
+export function clearEmbedding(): void {
+	embedding = null;
+}
+
+/** Reset pipeline to no-model state, clearing all inference artifacts. */
+export function resetPipeline(): void {
+	cancelCurrentOperation();
+	embedding = null;
+	pipelineState.error = null;
+	pipelineState.lastEncodeMs = null;
+	pipelineState.lastDecodeMs = null;
+	appState.maskResult = null;
+	if (pipeline.current !== 'no-model') {
+		sendEvent('reset');
+	}
+}
+
+/**
+ * Handle a worker crash -- resets the pipeline to error state.
+ * Called from the worker error listener in +page.svelte.
+ */
+export function handleWorkerError(err: Error): void {
+	cancelCurrentOperation();
+	embedding = null;
+	pipelineState.error = `Worker crashed: ${err.message}`;
+	pipelineState.downloadProgress = {
+		stage: 'error',
+		bytesDownloaded: 0,
+		totalBytes: 0,
+		error: 'Worker crashed. Select model to restart.',
+	};
+	if (pipeline.current !== 'error' && pipeline.current !== 'no-model') {
+		sendEvent('fail');
+	}
+}
+
+/**
+ * Schedule a hover decode at the given image-space coordinates.
+ * Uses single-inflight + drain-latest concurrency control.
+ */
+export function scheduleHoverDecode(imageX: number, imageY: number): void {
+	if (!canHoverDecode_ || !appState.currentImage) return;
+
+	if (
+		imageX < 0 ||
+		imageY < 0 ||
+		imageX >= appState.currentImage.naturalWidth ||
+		imageY >= appState.currentImage.naturalHeight
+	) {
+		appState.hoverMask = null;
+		appState.hoverTriggerPos = null;
+		return;
+	}
+
+	if (hoverInferenceRunning) {
+		hoverPendingCoords = { x: imageX, y: imageY };
+		logger.debug('Hover decode queued (in-flight)');
+		return;
+	}
+	void runHoverDecode(imageX, imageY);
+}
+
+async function runHoverDecode(imageX: number, imageY: number): Promise<void> {
+	if (!appState.currentImage || !embedding) return;
+
+	hoverInferenceRunning = true;
+	const myId = ++hoverRequestId;
+	const api = getWorkerApi();
+	const t0 = performance.now();
+	logger.debug(`Hover decode #${myId} started at (${Math.round(imageX)}, ${Math.round(imageY)})`);
+	try {
+		const hoverPoints: Point[] = [...$state.snapshot(appState.points), { x: imageX, y: imageY, label: 1 as const }];
+
+		const previousMask = appState.maskResult?.lowResMasks ?? null;
+		let maskInput: Float32Array | null = null;
+		if (previousMask && appState.maskResult) {
+			const idx = appState.maskResult.selectedIndex;
+			maskInput = new Float32Array(256 * 256);
+			maskInput.set(previousMask.subarray(idx * 256 * 256, (idx + 1) * 256 * 256));
+		}
+
+		const result = await withTimeout(
+			api.decode(
+				{ points: hoverPoints },
+				{
+					maskInput,
+					outputWidth: appState.currentImage.naturalWidth,
+					outputHeight: appState.currentImage.naturalHeight,
+				},
+			),
+			5_000,
+			'hover-decode',
+		);
+		const elapsed = Math.round(performance.now() - t0);
+		emaHoverLatency = EMA_ALPHA * elapsed + (1 - EMA_ALPHA) * emaHoverLatency;
+		if (myId !== hoverRequestId) {
+			logger.debug(`Hover decode #${myId} stale, discarded`);
+			return;
+		}
+		logger.debug(`Hover decode #${myId} complete in ${elapsed}ms`);
+		appState.hoverMask = result.masks[result.selectedIndex] ?? null;
+		appState.hoverTriggerPos = appState.hoverMask ? { x: imageX, y: imageY } : null;
+	} catch {
+		logger.debug(`Hover decode #${myId} failed`);
+		appState.hoverMask = null;
+		appState.hoverTriggerPos = null;
+		hoverPendingCoords = null;
+	} finally {
+		hoverInferenceRunning = false;
+		if (hoverPendingCoords) {
+			logger.debug('Draining pending hover decode');
+			const { x, y } = hoverPendingCoords;
+			hoverPendingCoords = null;
+			void runHoverDecode(x, y);
+		}
+	}
+}
+
+/** Cancel any pending hover decode. */
+export function cancelHoverDecode(): void {
+	hoverPendingCoords = null;
+	appState.hoverMask = null;
+	appState.hoverTriggerPos = null;
+}
+
+/**
+ * Debounced rethreshold of existing decode results.
+ * Call whenever maskThreshold or maskSmoothPasses changes.
+ */
+export function scheduleRethreshold(threshold: number, smoothPasses: number): void {
+	if (rethresholdTimer) clearTimeout(rethresholdTimer);
+	rethresholdTimer = setTimeout(() => {
+		if (!appState.maskResult || !appState.currentImage) return;
+		if (pipeline.current !== 'ready') return;
+		const api = getWorkerApi();
+		void withTimeout(
+			api.rethreshold(
+				threshold,
+				smoothPasses,
+				appState.currentImage.naturalWidth,
+				appState.currentImage.naturalHeight,
+			),
+			5_000,
+			'rethreshold',
+		)
+			.then((result) => {
+				if (result) appState.maskResult = result;
+			})
+			.catch((err) => {
+				logger.error(`Rethreshold failed: ${errorMessage(err)}`);
+			});
+	}, 150);
+}
+
+/**
+ * Initialize pipeline auto-trigger effects. Call from +page.svelte's onMount
+ * or top-level script block. Returns a cleanup function.
+ */
+export function initPipelineEffects(): () => void {
+	return $effect.root(() => {
+		$effect(() => {
+			const threshold = appState.maskThreshold;
+			const smoothPasses = appState.maskSmoothPasses;
+			scheduleRethreshold(threshold, smoothPasses);
+		});
+	});
 }

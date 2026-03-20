@@ -1,6 +1,5 @@
 <script lang="ts">
-import { appState } from '$lib/stores/app-state.svelte';
-import { cancelModelInit, retryModelInit } from '$lib/stores/inference-pipeline.svelte';
+import { pipelineState, cancelDownload, retryFromError } from '$lib/stores/inference-pipeline.svelte';
 import { formatBytes } from '$lib/inference/models';
 import Progress from '$lib/components/ui/progress.svelte';
 import Button from '$lib/components/ui/button.svelte';
@@ -11,7 +10,7 @@ import Loader from '@lucide/svelte/icons/loader-circle';
 import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 import { css } from 'styled-system/css';
 
-const progress = $derived(appState.downloadProgress);
+const progress = $derived(pipelineState.downloadProgress);
 
 const progressPercent = $derived(
 	progress.totalBytes > 0 ? Math.round((progress.bytesDownloaded / progress.totalBytes) * 100) : 0,
@@ -88,12 +87,12 @@ const actions = css({
 
 	<div class={actions}>
 		{#if progress.stage !== 'idle' && progress.stage !== 'ready' && progress.stage !== 'error'}
-			<Button size="sm" variant="outline" onclick={cancelModelInit}>
+			<Button size="sm" variant="outline" onclick={cancelDownload}>
 				<X size={14} />
 				Cancel
 			</Button>
 		{:else if progress.stage === 'error'}
-			<Button size="sm" onclick={retryModelInit}>
+			<Button size="sm" onclick={retryFromError}>
 				<RefreshCw size={14} />
 				Retry
 			</Button>

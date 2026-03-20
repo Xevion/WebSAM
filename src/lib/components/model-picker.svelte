@@ -1,7 +1,7 @@
 <script lang="ts">
 import { appState } from '$lib/stores/app-state.svelte';
 import { MODEL_REGISTRY, MODEL_FAMILIES, formatBytes } from '$lib/inference/models';
-import { initModel } from '$lib/stores/inference-pipeline.svelte';
+import { selectModel, pipelineState } from '$lib/stores/inference-pipeline.svelte';
 import { Select, createListCollection } from '@ark-ui/svelte/select';
 import { Portal } from '@ark-ui/svelte/portal';
 import ChevronDown from '@lucide/svelte/icons/chevron-down';
@@ -25,11 +25,8 @@ const selectedValue = $derived(appState.selectedModel ? [appState.selectedModel.
 function handleValueChange(value: string[]) {
 	const id = value[0];
 	const model = MODEL_REGISTRY.find((m) => m.id === id);
-	appState.selectedModel = model ?? null;
 	if (model) {
-		appState.downloadProgress = { stage: 'idle', bytesDownloaded: 0, totalBytes: model.totalSize };
-		appState.isModelReady = false;
-		void initModel(model);
+		selectModel(model);
 	}
 }
 
@@ -225,7 +222,7 @@ const cachedBadge = css({
 			</div>
 			<div class={detailRow}>
 				<span>Quantization: {appState.selectedModel.quantization.toUpperCase()}</span>
-				{#if appState.downloadProgress.stage === 'ready'}
+				{#if pipelineState.downloadProgress.stage === 'ready'}
 					<span class={cachedBadge}>Ready</span>
 				{/if}
 			</div>
