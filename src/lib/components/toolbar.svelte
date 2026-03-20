@@ -1,7 +1,14 @@
 <script lang="ts">
 import { appState, resetPrompts, clearImage } from '$lib/stores/app-state.svelte';
 import { promptHistory } from '$lib/stores/prompt-history.svelte';
-import { getIsModelReady, undoAndDecode, redoAndDecode, onImageRemoved } from '$lib/stores/inference-pipeline.svelte';
+import {
+	getIsModelReady,
+	undoAndDecode,
+	redoAndDecode,
+	onImageRemoved,
+	pipeline,
+	runEverythingMode as pipelineRunEverything,
+} from '$lib/stores/inference-pipeline.svelte';
 import ToggleGroupComponent from '$lib/components/ui/toggle-group.svelte';
 import Tooltip from '$lib/components/ui/tooltip.svelte';
 import Button from '$lib/components/ui/button.svelte';
@@ -35,6 +42,7 @@ function handleModeChange(value: string[]) {
 function runEverythingMode() {
 	appState.interactionMode = 'everything';
 	resetPrompts();
+	void pipelineRunEverything();
 }
 
 const bar = css({
@@ -100,7 +108,7 @@ function handleChangeImage(event: Event) {
 						_hover: { color: 'fg', bg: 'bg.muted' },
 					}),
 					onclick: runEverythingMode,
-					disabled: !getIsModelReady() || !appState.currentImage,
+					disabled: pipeline.current !== 'ready' || !appState.currentImage,
 				})}
 			>
 				<Sparkles size={14} />
@@ -131,7 +139,7 @@ function handleChangeImage(event: Event) {
 		{/snippet}
 	</Tooltip>
 
-	<Tooltip content="Clear all prompts">
+	<Tooltip content="Clear all prompts (Esc)">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
 				<Button size="icon-sm" variant="ghost" onclick={resetPrompts} disabled={!hasPoints && !appState.box}>
@@ -143,7 +151,7 @@ function handleChangeImage(event: Event) {
 
 	<div class={separator}></div>
 
-	<Tooltip content="Download mask as PNG">
+	<Tooltip content="Download mask as PNG (D)">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
 				<Button size="icon-sm" variant="ghost" onclick={exportMask} disabled={!hasMask}>
@@ -153,7 +161,7 @@ function handleChangeImage(event: Event) {
 		{/snippet}
 	</Tooltip>
 
-	<Tooltip content="Download cutout">
+	<Tooltip content="Download cutout (Shift+D)">
 		{#snippet children(props: TooltipProps)}
 			<span {...props()}>
 				<Button size="sm" variant="ghost" onclick={exportCutout} disabled={!hasMask}>

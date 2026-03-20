@@ -1,6 +1,6 @@
 <script lang="ts">
 import { appState } from '$lib/stores/app-state.svelte';
-import { pipeline, pipelineState } from '$lib/stores/inference-pipeline.svelte';
+import { pipeline, pipelineState, getHoverDebounceFloor, getEmaHoverLatency } from '$lib/stores/inference-pipeline.svelte';
 import Progress from '$lib/components/ui/progress.svelte';
 import Cpu from '@lucide/svelte/icons/cpu';
 import CheckCircle from '@lucide/svelte/icons/check-circle';
@@ -10,6 +10,9 @@ import Monitor from '@lucide/svelte/icons/monitor';
 import { css } from 'styled-system/css';
 
 const stageLabel = $derived.by(() => {
+	if (appState.everythingProgress) {
+		return `Segmenting: ${appState.everythingProgress.current}/${appState.everythingProgress.total}`;
+	}
 	switch (pipeline.current) {
 		case 'encoding':
 			return 'Encoding image...';
@@ -29,9 +32,10 @@ const stageLabel = $derived.by(() => {
 	}
 });
 
-const isActive = $derived(pipeline.current === 'encoding' || pipeline.current === 'decoding');
+const everythingProgress = $derived(appState.everythingProgress);
+const isActive = $derived(pipeline.current === 'encoding' || pipeline.current === 'decoding' || everythingProgress !== null);
 const isComplete = $derived(
-	pipeline.current === 'ready' && (pipelineState.lastDecodeMs !== null || pipelineState.lastEncodeMs !== null),
+	pipeline.current === 'ready' && (pipelineState.lastDecodeMs !== null || pipelineState.lastEncodeMs !== null) && everythingProgress === null,
 );
 const isError = $derived(pipeline.current === 'error');
 
@@ -68,6 +72,14 @@ const gpuAvailable = css({
 	color: 'success.fg',
 });
 
+const hoverStatsRow = css({
+	display: 'flex',
+	alignItems: 'center',
+	gap: '2',
+	fontSize: 'xs',
+	color: 'fg.muted',
+});
+
 const sectionLabel = css({
 	fontSize: 'xs',
 	fontWeight: 'semibold',
@@ -93,8 +105,17 @@ const sectionLabel = css({
 		<span>{stageLabel}</span>
 	</div>
 
-	{#if isActive}
+	{#if everythingProgress}
+		<Progress value={everythingProgress.current} max={everythingProgress.total} label={`Segmenting: ${everythingProgress.current}/${everythingProgress.total}`} />
+	{:else if isActive}
 		<Progress value={null} label={pipeline.current === 'encoding' ? 'Encoding' : 'Decoding'} />
+	{/if}
+
+	{#if pipeline.current === 'ready' || pipeline.current === 'decoding'}
+		<div class={hoverStatsRow}>
+			<span>Hover: ~{getEmaHoverLatency()}ms</span>
+			<span>Debounce: {getHoverDebounceFloor()}ms</span>
+		</div>
 	{/if}
 
 	<div class={gpuBadge}>

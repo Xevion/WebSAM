@@ -35,12 +35,20 @@ let hoverRequestId = 0;
 
 let hoverInferenceRunning = false;
 let hoverPendingCoords: { x: number; y: number } | null = null;
-const EMA_ALPHA = 0.2;
-let emaHoverLatency = 150;
+const EMA_ALPHA_DOWN = 0.5;
+const EMA_ALPHA_UP = 0.1;
+let emaHoverLatency = $state(150);
 
 /** Adaptive debounce floor: ~30% of measured decode latency, clamped to [16, 300]ms */
+const hoverDebounceFloor_ = $derived(Math.max(16, Math.min(300, Math.round(emaHoverLatency * 0.3))));
+
 export function getHoverDebounceFloor(): number {
-	return Math.max(16, Math.min(300, Math.round(emaHoverLatency * 0.3)));
+	return hoverDebounceFloor_;
+}
+
+/** Current EMA hover latency estimate in ms. */
+export function getEmaHoverLatency(): number {
+	return Math.round(emaHoverLatency);
 }
 
 let rethresholdTimer: ReturnType<typeof setTimeout> | null = null;
@@ -479,7 +487,8 @@ async function runHoverDecode(imageX: number, imageY: number): Promise<void> {
 			'hover-decode',
 		);
 		const elapsed = Math.round(performance.now() - t0);
-		emaHoverLatency = EMA_ALPHA * elapsed + (1 - EMA_ALPHA) * emaHoverLatency;
+		const alpha = elapsed < emaHoverLatency ? EMA_ALPHA_DOWN : EMA_ALPHA_UP;
+		emaHoverLatency = alpha * elapsed + (1 - alpha) * emaHoverLatency;
 		if (myId !== hoverRequestId) {
 			logger.debug(`Hover decode #${myId} stale, discarded`);
 			return;
@@ -501,6 +510,75 @@ async function runHoverDecode(imageX: number, imageY: number): Promise<void> {
 			void runHoverDecode(x, y);
 		}
 	}
+}
+
+const SEGMENT_PALETTE = [
+	'#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
+	'#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#14b8a6',
+	'#a855f7', '#6366f1', '#0ea5e9', '#84cc16', '#d946ef',
+	'#f59e0b',
+];
+
+/**
+ * Run "Everything" mode: generate a 16x16 grid of foreground points,
+ * decode each one individually, and collect high-confidence masks.
+ */
+export async function runEverythingMode(): Promise<void> {
+	if (pipeline.current !== 'ready' || !appState.currentImage) {
+		logger.warn(`runEverythingMode rejected: pipeline='${pipeline.current}', image=${!!appState.currentImage}`);
+		return;
+	}
+
+	const img = appState.currentImage;
+	const outputWidth = img.naturalWidth;
+	const outputHeight = img.naturalHeight;
+	const gridSize = 16;
+	const totalPoints = gridSize * gridSize;
+
+	const points: { x: number; y: number }[] = [];
+	const stepX = outputWidth / (gridSize + 1);
+	const stepY = outputHeight / (gridSize + 1);
+	for (let gy = 1; gy <= gridSize; gy++) {
+		for (let gx = 1; gx <= gridSize; gx++) {
+			points.push({ x: gx * stepX, y: gy * stepY });
+		}
+	}
+
+	appState.everythingMasks = [];
+	appState.everythingProgress = { current: 0, total: totalPoints };
+	logger.info(`Everything mode: ${totalPoints} grid points, ${outputWidth}x${outputHeight}`);
+
+	const api = getWorkerApi();
+	const results: Array<{ mask: ImageData; color: string; score: number }> = [];
+
+	for (let i = 0; i < points.length; i++) {
+		const pt = points[i];
+		appState.everythingProgress = { current: i + 1, total: totalPoints };
+
+		try {
+			const result = await withTimeout(
+				api.decode(
+					{ points: [{ x: pt.x, y: pt.y, label: 1 as const }] },
+					{ maskInput: null, outputWidth, outputHeight },
+				),
+				5_000,
+				`everything-decode-${i}`,
+			);
+
+			const bestScore = result.scores[result.selectedIndex];
+			if (bestScore > 0.7) {
+				const bestMask = result.masks[result.selectedIndex];
+				const color = SEGMENT_PALETTE[results.length % SEGMENT_PALETTE.length];
+				results.push({ mask: bestMask, color, score: bestScore });
+			}
+		} catch (err) {
+			logger.warn(`Everything decode point ${i} failed: ${errorMessage(err)}`);
+		}
+	}
+
+	appState.everythingMasks = results;
+	appState.everythingProgress = null;
+	logger.info(`Everything mode complete: ${results.length}/${totalPoints} masks kept (IoU > 0.7)`);
 }
 
 /** Cancel any pending hover decode. */

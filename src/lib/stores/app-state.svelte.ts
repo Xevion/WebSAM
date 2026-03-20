@@ -30,6 +30,11 @@ export const appState = $state({
 	/** Image-space coordinates where the current hover decode was triggered. */
 	hoverTriggerPos: null as { x: number; y: number } | null,
 
+	/** Masks from Everything mode, each with an assigned display color. */
+	everythingMasks: [] as Array<{ mask: ImageData; color: string; score: number }>,
+	/** Progress tracker for Everything mode grid segmentation. */
+	everythingProgress: null as { current: number; total: number } | null,
+
 	webgpuAvailable: false,
 });
 
@@ -40,6 +45,8 @@ export function resetPrompts(): void {
 	appState.maskResult = null;
 	appState.maskThreshold = 0.0;
 	appState.maskSmoothPasses = 0;
+	appState.everythingMasks = [];
+	appState.everythingProgress = null;
 	logger.debug('Prompts reset');
 	scheduleSave();
 }
@@ -74,6 +81,8 @@ export function clearImage(): void {
 	appState.imageFile = null;
 	appState.hoverMask = null;
 	appState.hoverTriggerPos = null;
+	appState.everythingMasks = [];
+	appState.everythingProgress = null;
 	resetPrompts();
 	promptHistory.clear();
 	void deleteCurrentImage();

@@ -7,6 +7,7 @@ import {
 	drawBoxOutline,
 	drawCrosshair,
 	drawHoverTriggerMarker,
+	drawMaskOverlay,
 	renderImageLayer,
 	renderMaskLayer,
 	renderHoverDeltaLayer,
@@ -154,6 +155,12 @@ $effect(() => {
 	const imgLayer = renderImageLayer(img, canvasWidth, canvasHeight, fit);
 	ctx.drawImage(imgLayer, 0, 0);
 
+	if (appState.everythingMasks.length > 0) {
+		for (const segment of appState.everythingMasks) {
+			drawMaskOverlay(ctx, segment.mask, segment.color, 0.4, scale, offsetX, offsetY);
+		}
+	}
+
 	if (mask && appState.maskViewMode === 'cutout') {
 		const cutoutLayer = renderMaskLayer(
 			mask,
@@ -289,6 +296,35 @@ function handleCanvasClick(event: MouseEvent) {
 		logger.warn(`Click ignored: pipeline is '${getPipelinePhase()}'`);
 		return;
 	}
+
+	// Everything mode: click to select a segment
+	if (appState.interactionMode === 'everything' && appState.everythingMasks.length > 0 && canvasEl) {
+		const { x: cx, y: cy } = screenToCanvasCoords(event.clientX, event.clientY);
+		const { x, y } = canvasToImageCoords(cx, cy, fit.scale, fit.offsetX, fit.offsetY);
+		const imgX = Math.round(x);
+		const imgY = Math.round(y);
+
+		if (imgX < 0 || imgY < 0 || imgX >= appState.currentImage.naturalWidth || imgY >= appState.currentImage.naturalHeight) return;
+
+		for (const segment of appState.everythingMasks) {
+			const idx = (imgY * segment.mask.width + imgX) * 4 + 3; // alpha channel
+			if (segment.mask.data[idx] > 128) {
+				appState.maskResult = {
+					masks: [segment.mask],
+					rawLogits: new Float32Array(0),
+					lowResMasks: new Float32Array(0),
+					scores: [segment.score],
+					selectedIndex: 0,
+				};
+				appState.everythingMasks = [];
+				appState.interactionMode = 'point';
+				logger.info('Everything mode: segment selected');
+				return;
+			}
+		}
+		return;
+	}
+
 	if (appState.interactionMode !== 'point') return;
 	if (!canvasEl) return;
 

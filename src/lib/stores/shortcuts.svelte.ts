@@ -12,7 +12,10 @@ const SHORTCUTS = [
 	{ keys: 'b', description: 'Box mode' },
 	{ keys: 'd', description: 'Download mask' },
 	{ keys: 'shift+d', description: 'Download cutout' },
+	{ keys: '?', description: 'Show keyboard shortcuts' },
 ] as const;
+
+export const shortcutHelp = $state({ open: false });
 
 export function initShortcuts(): () => void {
 	const target = document.documentElement;
@@ -38,6 +41,10 @@ export function initShortcuts(): () => void {
 		registerHotkey(target, 'shift+d', (e) => {
 			if (shouldIgnore(e)) return;
 			void exportCutout();
+		}),
+		registerHotkey(target, '?', (e) => {
+			if (shouldIgnore(e)) return;
+			shortcutHelp.open = !shortcutHelp.open;
 		}),
 	];
 

@@ -10,7 +10,8 @@ import { getLogger } from '@logtape/logtape';
 import { errorMessage } from '$lib/utils/error';
 import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
-import { initShortcuts } from '$lib/stores/shortcuts.svelte';
+import { initShortcuts, shortcutHelp } from '$lib/stores/shortcuts.svelte';
+import ShortcutHelp from '$lib/components/shortcut-help.svelte';
 import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onWorkerError } from '$lib/inference/worker-api';
 import { selectModel, handleWorkerError, initPipelineEffects } from '$lib/stores/inference-pipeline.svelte';
@@ -106,6 +107,27 @@ const rightPanel = css({
 	overflowY: 'auto',
 	p: '4',
 });
+
+const helpButton = css({
+	position: 'fixed',
+	bottom: '3',
+	left: '3',
+	w: '8',
+	h: '8',
+	borderRadius: 'full',
+	bg: 'bg.subtle',
+	color: 'fg.muted',
+	border: '1px solid',
+	borderColor: 'border',
+	cursor: 'pointer',
+	zIndex: '40',
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	fontSize: 'sm',
+	fontWeight: 'bold',
+	_hover: { bg: 'bg.muted', color: 'fg' },
+});
 </script>
 
 <div class={pageLayout}>
@@ -139,3 +161,9 @@ const rightPanel = css({
 		<MaskControls />
 	</aside>
 </div>
+
+<button class={helpButton} onclick={() => (shortcutHelp.open = true)} aria-label="Keyboard shortcuts">
+	?
+</button>
+
+<ShortcutHelp open={shortcutHelp.open} onOpenChange={(v) => (shortcutHelp.open = v)} />
