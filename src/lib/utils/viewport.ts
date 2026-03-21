@@ -14,11 +14,7 @@ export interface Fit {
  * Returns transform parameters for ctx.setTransform(a, 0, 0, a, tx, ty).
  * Combines the fit-to-canvas transform, the user viewport (pan/zoom), and the device pixel ratio.
  */
-export function computeTransform(
-	fit: Fit,
-	viewport: Viewport,
-	dpr: number,
-): { a: number; tx: number; ty: number } {
+export function computeTransform(fit: Fit, viewport: Viewport, dpr: number): { a: number; tx: number; ty: number } {
 	const a = fit.scale * viewport.scale * dpr;
 	const tx = (fit.offsetX * viewport.scale + viewport.x) * dpr;
 	const ty = (fit.offsetY * viewport.scale + viewport.y) * dpr;

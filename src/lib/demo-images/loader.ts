@@ -1,7 +1,7 @@
 import type { DemoImage } from './types';
 import { demoImageStore } from './store.svelte';
 import { loadImageFromFile } from '$lib/utils/image';
-import { appState, resetPrompts } from '$lib/stores/app-state.svelte';
+import { appState } from '$lib/stores/app-state.svelte';
 import { clearEmbedding, encodeCurrentImage, getIsModelReady } from '$lib/stores/inference-pipeline.svelte';
 import { promptHistory } from '$lib/stores/prompt-history.svelte';
 

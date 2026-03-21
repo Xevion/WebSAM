@@ -1,11 +1,7 @@
 import type { Point, Box } from '$lib/inference/types';
 import { extractContours } from './contour';
 
-export function drawPointMarker(
-	ctx: CanvasRenderingContext2D,
-	point: Point,
-	effScale: number,
-): void {
+export function drawPointMarker(ctx: CanvasRenderingContext2D, point: Point, effScale: number): void {
 	const radius = 6 / effScale;
 
 	ctx.beginPath();
@@ -17,11 +13,7 @@ export function drawPointMarker(
 	ctx.stroke();
 }
 
-export function drawBoxOutline(
-	ctx: CanvasRenderingContext2D,
-	box: Box,
-	effScale: number,
-): void {
+export function drawBoxOutline(ctx: CanvasRenderingContext2D, box: Box, effScale: number): void {
 	const x = Math.min(box.x1, box.x2);
 	const y = Math.min(box.y1, box.y2);
 	const w = Math.abs(box.x2 - box.x1);
@@ -90,12 +82,7 @@ export function drawMaskOutline(
  * Temporarily resets the transform so the crosshair follows the CSS cursor
  * regardless of the image-space transform applied to the context.
  */
-export function drawCrosshair(
-	ctx: CanvasRenderingContext2D,
-	cssX: number,
-	cssY: number,
-	dpr: number,
-): void {
+export function drawCrosshair(ctx: CanvasRenderingContext2D, cssX: number, cssY: number, dpr: number): void {
 	const size = 10;
 
 	const saved = ctx.getTransform();
@@ -131,10 +118,7 @@ export function drawHoverTriggerMarker(
 	effScale: number,
 ): void {
 	// Distance in screen pixels for threshold comparison
-	const dist = Math.hypot(
-		(triggerX - cursorX) * effScale,
-		(triggerY - cursorY) * effScale,
-	);
+	const dist = Math.hypot((triggerX - cursorX) * effScale, (triggerY - cursorY) * effScale);
 	// Only show when cursor has drifted noticeably from the trigger point
 	if (dist < 8) return;
 	// Fade in as the cursor drifts further, fully opaque at 40px+
@@ -319,15 +303,8 @@ export function renderMaskLayer(
 	return maskLayerCanvas;
 }
 
-export function renderHoverDeltaLayer(
-	hoverMask: ImageData,
-	committedMask: ImageData | null,
-): OffscreenCanvas | null {
-	if (
-		hoverLayerCanvas &&
-		cachedHoverMaskRef === hoverMask &&
-		cachedCommittedMaskRef === committedMask
-	) {
+export function renderHoverDeltaLayer(hoverMask: ImageData, committedMask: ImageData | null): OffscreenCanvas | null {
+	if (hoverLayerCanvas && cachedHoverMaskRef === hoverMask && cachedCommittedMaskRef === committedMask) {
 		return hoverLayerCanvas;
 	}
 

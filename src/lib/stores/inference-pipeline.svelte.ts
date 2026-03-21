@@ -234,11 +234,7 @@ async function performDownload(): Promise<void> {
 
 	const api = getWorkerApi();
 	try {
-		await withTimeout(
-			api.downloadAndInit(snapshot, downloadProgressProxy),
-			300_000,
-			'downloadAndInit',
-		);
+		await withTimeout(api.downloadAndInit(snapshot, downloadProgressProxy), 300_000, 'downloadAndInit');
 		pipelineState.downloadProgress = {
 			stage: 'ready',
 			bytesDownloaded: snapshot.totalSize,
@@ -583,9 +579,21 @@ async function runHoverDecode(imageX: number, imageY: number): Promise<void> {
 }
 
 const SEGMENT_PALETTE = [
-	'#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
-	'#3b82f6', '#8b5cf6', '#ec4899', '#f43f5e', '#14b8a6',
-	'#a855f7', '#6366f1', '#0ea5e9', '#84cc16', '#d946ef',
+	'#ef4444',
+	'#f97316',
+	'#eab308',
+	'#22c55e',
+	'#06b6d4',
+	'#3b82f6',
+	'#8b5cf6',
+	'#ec4899',
+	'#f43f5e',
+	'#14b8a6',
+	'#a855f7',
+	'#6366f1',
+	'#0ea5e9',
+	'#84cc16',
+	'#d946ef',
 	'#f59e0b',
 ];
 
@@ -619,7 +627,7 @@ export async function runEverythingMode(): Promise<void> {
 	logger.info(`Everything mode: ${totalPoints} grid points, ${outputWidth}x${outputHeight}`);
 
 	const api = getWorkerApi();
-	const results: Array<{ mask: ImageData; color: string; score: number }> = [];
+	const results: { mask: ImageData; color: string; score: number }[] = [];
 
 	for (let i = 0; i < points.length; i++) {
 		const pt = points[i];

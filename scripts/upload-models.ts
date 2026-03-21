@@ -71,8 +71,7 @@ const UPLOAD_SPECS: ModelUploadSpec[] = [
 	{
 		modelId: 'sam2.1-tiny',
 		zip: {
-			zipUrl:
-				'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_tiny_20260221.zip',
+			zipUrl: 'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_tiny_20260221.zip',
 			files: [
 				{
 					zipPath: 'sam2.1_hiera_tiny.encoder.onnx',
@@ -88,8 +87,7 @@ const UPLOAD_SPECS: ModelUploadSpec[] = [
 	{
 		modelId: 'sam2.1-small',
 		zip: {
-			zipUrl:
-				'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_small_20260221.zip',
+			zipUrl: 'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_small_20260221.zip',
 			files: [
 				{
 					zipPath: 'sam2.1_hiera_small.encoder.onnx',

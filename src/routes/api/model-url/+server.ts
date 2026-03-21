@@ -5,6 +5,7 @@ import { error, json } from '@sveltejs/kit';
 const EXPIRES_SECONDS = 3600;
 const BUCKET_NAME = 'websam';
 
+/* eslint-disable @typescript-eslint/only-throw-error -- SvelteKit error() returns HttpError, not Error */
 export const GET: RequestHandler = async ({ url, platform }) => {
 	const env = platform?.env;
 	if (!env) throw error(503, 'Platform bindings unavailable');
@@ -24,9 +25,7 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 		region: 'auto',
 	});
 
-	const objectUrl = new URL(
-		`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET_NAME}/${key}`,
-	);
+	const objectUrl = new URL(`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${BUCKET_NAME}/${key}`);
 	objectUrl.searchParams.set('X-Amz-Expires', String(EXPIRES_SECONDS));
 
 	const signed = await client.sign(new Request(objectUrl.toString()), {

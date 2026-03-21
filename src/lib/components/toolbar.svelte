@@ -2,7 +2,6 @@
 import { appState, resetPrompts, clearImage } from '$lib/stores/app-state.svelte';
 import { promptHistory } from '$lib/stores/prompt-history.svelte';
 import {
-	getIsModelReady,
 	undoAndDecode,
 	redoAndDecode,
 	onImageRemoved,

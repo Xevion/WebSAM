@@ -61,7 +61,7 @@ let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let canvasWidth = $state(800);
 let canvasHeight = $state(600);
 
-let dpr = $state(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+let dpr = $state(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
 let viewport = $state<Viewport>({ x: 0, y: 0, scale: 1 });
 let mouseImagePos = $state({ x: 0, y: 0 });
 let mouseCssPos = $state({ x: 0, y: 0 });
@@ -71,7 +71,9 @@ let panStart = $state({ x: 0, y: 0 });
 // DPR change listener
 $effect(() => {
 	const mql = matchMedia(`(resolution: ${dpr}dppx)`);
-	function onChange() { dpr = window.devicePixelRatio || 1; }
+	function onChange() {
+		dpr = window.devicePixelRatio || 1;
+	}
 	mql.addEventListener('change', onChange);
 	return () => mql.removeEventListener('change', onChange);
 });
@@ -121,13 +123,24 @@ function markDirty() {
 // Tracking effect — reads all reactive deps, calls markDirty
 $effect(() => {
 	void canvasEl;
-	void canvasWidth; void canvasHeight; void dpr; void viewport;
-	void appState.currentImage; void appState.maskResult;
-	void appState.maskViewMode; void appState.maskColor; void appState.maskOpacity;
-	void appState.hoverMask; void appState.hoverTriggerPos;
-	void appState.points; void appState.box;
-	void appState.interactionMode; void appState.everythingMasks;
-	void mouseImagePos; void mouseCssPos; void fit;
+	void canvasWidth;
+	void canvasHeight;
+	void dpr;
+	void viewport;
+	void appState.currentImage;
+	void appState.maskResult;
+	void appState.maskViewMode;
+	void appState.maskColor;
+	void appState.maskOpacity;
+	void appState.hoverMask;
+	void appState.hoverTriggerPos;
+	void appState.points;
+	void appState.box;
+	void appState.interactionMode;
+	void appState.everythingMasks;
+	void mouseImagePos;
+	void mouseCssPos;
+	void fit;
 	void appState.hoverPreviewEnabled;
 	void getHoverInferenceRunning();
 	markDirty();
@@ -147,7 +160,9 @@ $effect(() => {
 
 // Cleanup RAF on unmount
 $effect(() => {
-	return () => { if (rafId !== null) cancelAnimationFrame(rafId); };
+	return () => {
+		if (rafId !== null) cancelAnimationFrame(rafId);
+	};
 });
 
 function render() {
@@ -197,9 +212,7 @@ function render() {
 			ctx.drawImage(cutoutLayer, 0, 0);
 		}
 	} else if (mask) {
-		const maskLayer = renderMaskLayer(
-			mask, appState.maskColor, appState.maskOpacity, appState.maskViewMode, null
-		);
+		const maskLayer = renderMaskLayer(mask, appState.maskColor, appState.maskOpacity, appState.maskViewMode, null);
 		if (maskLayer) ctx.drawImage(maskLayer, 0, 0);
 	}
 
@@ -348,7 +361,13 @@ function handleCanvasClick(event: MouseEvent) {
 		const imgX = Math.round(x);
 		const imgY = Math.round(y);
 
-		if (imgX < 0 || imgY < 0 || imgX >= appState.currentImage.naturalWidth || imgY >= appState.currentImage.naturalHeight) return;
+		if (
+			imgX < 0 ||
+			imgY < 0 ||
+			imgX >= appState.currentImage.naturalWidth ||
+			imgY >= appState.currentImage.naturalHeight
+		)
+			return;
 
 		for (const segment of appState.everythingMasks) {
 			const idx = (imgY * segment.mask.width + imgX) * 4 + 3; // alpha channel

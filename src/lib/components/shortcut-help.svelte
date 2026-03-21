@@ -10,10 +10,7 @@ interface Props {
 
 const { open, onOpenChange }: Props = $props();
 
-const allShortcuts = [
-	...SHORTCUTS,
-	{ keys: '?', description: 'Show keyboard shortcuts' },
-];
+const allShortcuts = [...SHORTCUTS, { keys: '?', description: 'Show keyboard shortcuts' }];
 
 function formatKey(raw: string): string {
 	return raw
@@ -70,11 +67,11 @@ const kbd = css({
 
 <DialogComponent {open} {onOpenChange} title="Keyboard Shortcuts">
 	<div class={list}>
-		{#each allShortcuts as shortcut}
+		{#each allShortcuts as shortcut (shortcut.keys)}
 			<div class={row}>
 				<span class={descriptionStyle}>{shortcut.description}</span>
 				<span class={keysWrapper}>
-					{#each formatKey(shortcut.keys).split(' + ') as part, i}
+					{#each formatKey(shortcut.keys).split(' + ') as part, i (part)}
 						{#if i > 0}
 							<span class={css({ fontSize: 'xs', color: 'fg.subtle', alignSelf: 'center' })}>+</span>
 						{/if}

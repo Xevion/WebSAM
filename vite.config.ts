@@ -23,10 +23,7 @@ function stripOrtWasm(): Plugin {
 		transform(code, id) {
 			if (!id.includes('onnxruntime-web')) return;
 			if (id.includes('.wasm')) return;
-			const replaced = code.replace(
-				/new URL\("ort-wasm[^"]*\.wasm",import\.meta\.url\)/g,
-				'new URL("data:,")',
-			);
+			const replaced = code.replace(/new URL\("ort-wasm[^"]*\.wasm",import\.meta\.url\)/g, 'new URL("data:,")');
 			if (replaced !== code) return replaced;
 		},
 	};

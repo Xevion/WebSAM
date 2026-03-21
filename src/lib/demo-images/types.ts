@@ -20,9 +20,7 @@ export interface DemoCollection {
 	id: string;
 	name: string;
 	description: string;
-	filter:
-		| { type: 'tags'; tags: string[]; mode: 'any' | 'all' }
-		| { type: 'ids'; ids: string[] };
+	filter: { type: 'tags'; tags: string[]; mode: 'any' | 'all' } | { type: 'ids'; ids: string[] };
 }
 
 export interface DemoManifest {

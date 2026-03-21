@@ -31,7 +31,7 @@ export const appState = $state({
 	hoverTriggerPos: null as { x: number; y: number } | null,
 
 	/** Masks from Everything mode, each with an assigned display color. */
-	everythingMasks: [] as Array<{ mask: ImageData; color: string; score: number }>,
+	everythingMasks: [] as { mask: ImageData; color: string; score: number }[],
 	/** Progress tracker for Everything mode grid segmentation. */
 	everythingProgress: null as { current: number; total: number } | null,
 

@@ -172,6 +172,6 @@ const helpButton = css({
 	?
 </button>
 
-<ShortcutHelp open={shortcutHelp.open} onOpenChange={(v) => (shortcutHelp.open = v)} />
+<ShortcutHelp open={shortcutHelp.open} onOpenChange={(v: boolean) => { shortcutHelp.open = v; }} />
 
-<DemoGallery open={galleryOpen} onOpenChange={(o) => { galleryOpen = o; }} />
+<DemoGallery open={galleryOpen} onOpenChange={(o: boolean) => { galleryOpen = o; }} />

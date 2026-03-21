@@ -13,8 +13,8 @@ async function resolveModelUrl(key: string): Promise<string> {
 	if (!res.ok) {
 		throw new Error(`Failed to resolve model URL for ${key}: ${res.status}`);
 	}
-	const { url } = await res.json();
-	return url;
+	const data = (await res.json()) as { url: string };
+	return data.url;
 }
 
 /**
@@ -94,7 +94,11 @@ export async function downloadModel(
 	let decoderDownloaded = 0;
 
 	// Resolve presigned URLs for both model files
-	logger.info('Resolving model URLs', { modelId: model.id, encoderKey: model.encoderKey, decoderKey: model.decoderKey });
+	logger.info('Resolving model URLs', {
+		modelId: model.id,
+		encoderKey: model.encoderKey,
+		decoderKey: model.decoderKey,
+	});
 	const [encoderUrl, decoderUrl] = await Promise.all([
 		resolveModelUrl(model.encoderKey),
 		resolveModelUrl(model.decoderKey),

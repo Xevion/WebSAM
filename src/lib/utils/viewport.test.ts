@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-	computeTransform,
-	effectiveScale,
-	panBy,
-	resetViewport,
-	screenToImageCoords,
-	zoomAtPoint,
-} from './viewport';
+import { computeTransform, effectiveScale, panBy, resetViewport, screenToImageCoords, zoomAtPoint } from './viewport';
 import type { Fit, Viewport } from './viewport';
 
 const identityViewport: Viewport = { x: 0, y: 0, scale: 1 };
