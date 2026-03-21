@@ -3,7 +3,7 @@ import { AwsClient } from 'aws4fetch';
 import { error, json } from '@sveltejs/kit';
 
 const EXPIRES_SECONDS = 3600;
-const BUCKET_NAME = 'websam-models';
+const BUCKET_NAME = 'websam';
 
 export const GET: RequestHandler = async ({ url, platform }) => {
 	const env = platform?.env;

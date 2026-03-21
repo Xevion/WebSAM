@@ -2,6 +2,8 @@ import devtoolsJson from 'vite-plugin-devtools-json';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 /**
  * Prevents Vite from bundling ORT WASM files as static assets.
@@ -30,9 +32,35 @@ function stripOrtWasm(): Plugin {
 	};
 }
 
+/**
+ * Copies ORT's .mjs glue files into the build output at /wasm/*.mjs.
+ * These are small (24-48 KB) JS files that ORT loads alongside the .wasm files.
+ * The .wasm files themselves are served from R2, but the .mjs files are small
+ * enough to include as static assets.
+ */
+function copyOrtGlue(): Plugin {
+	return {
+		name: 'copy-ort-glue',
+		apply: 'build',
+		generateBundle() {
+			const distDir = resolve('node_modules/onnxruntime-web/dist');
+			const mjsFiles = readdirSync(distDir).filter(
+				(f) => f.startsWith('ort-wasm-simd-threaded') && f.endsWith('.mjs'),
+			);
+			for (const file of mjsFiles) {
+				this.emitFile({
+					type: 'asset',
+					fileName: `wasm/${file}`,
+					source: readFileSync(resolve(distDir, file)),
+				});
+			}
+		},
+	};
+}
+
 export default defineConfig({
 	clearScreen: false,
-	plugins: [sveltekit(), devtoolsJson(), stripOrtWasm()],
+	plugins: [sveltekit(), devtoolsJson(), stripOrtWasm(), copyOrtGlue()],
 	optimizeDeps: {
 		exclude: ['onnxruntime-web'],
 	},

@@ -16,7 +16,9 @@
 		"lint": "eslint --cache --max-warnings 0 .",
 		"lint:fix": "eslint --cache --fix .",
 		"format": "biome format --write .",
-		"format:check": "biome check --formatter-enabled=true --linter-enabled=false ."
+		"format:check": "biome check --formatter-enabled=true --linter-enabled=false .",
+		"deploy": "wrangler deploy",
+		"deploy:dry-run": "wrangler deploy --dry-run"
 	},
 	"devDependencies": {
 		"@aws-sdk/client-s3": "^3.1013.0",

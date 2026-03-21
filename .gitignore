@@ -21,6 +21,7 @@ Thumbs.db
 # Cloudflare Workers local secrets
 .dev.vars
 
+
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*

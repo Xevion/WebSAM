@@ -14,8 +14,10 @@
 import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { parseArgs } from 'util';
-import { createReadStream, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createReadStream, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { execSync } from 'node:child_process';
 
 const { values: args } = parseArgs({
 	options: {
@@ -28,7 +30,7 @@ const { values: args } = parseArgs({
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID;
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
-const BUCKET = 'websam-models';
+const BUCKET = 'websam';
 
 if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_ACCOUNT_ID) {
 	console.error('Required env vars: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID');
@@ -44,45 +46,61 @@ const s3 = new S3Client({
 	},
 });
 
-interface ModelUploadSpec {
-	modelId: string;
+interface FileUpload {
+	sourceUrl: string;
+	r2Key: string;
+}
+
+interface ZipUpload {
+	zipUrl: string;
 	files: Array<{
-		sourceUrl: string;
+		/** Path inside the ZIP archive */
+		zipPath: string;
 		r2Key: string;
 	}>;
+}
+
+interface ModelUploadSpec {
+	modelId: string;
+	files?: FileUpload[];
+	zip?: ZipUpload;
 }
 
 // Canonical sources — download from HuggingFace, upload to R2 under versioned keys
 const UPLOAD_SPECS: ModelUploadSpec[] = [
 	{
 		modelId: 'sam2.1-tiny',
-		files: [
-			{
-				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_tiny/sam2.1_hiera_tiny.encoder.onnx',
-				r2Key: 'models/sam2.1-tiny/v1/encoder.onnx',
-			},
-			{
-				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_tiny/sam2.1_hiera_tiny.decoder.onnx',
-				r2Key: 'models/sam2.1-tiny/v1/decoder.onnx',
-			},
-		],
+		zip: {
+			zipUrl:
+				'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_tiny_20260221.zip',
+			files: [
+				{
+					zipPath: 'sam2.1_hiera_tiny.encoder.onnx',
+					r2Key: 'models/sam2.1-tiny/v1/encoder.onnx',
+				},
+				{
+					zipPath: 'sam2.1_hiera_tiny.decoder.onnx',
+					r2Key: 'models/sam2.1-tiny/v1/decoder.onnx',
+				},
+			],
+		},
 	},
 	{
 		modelId: 'sam2.1-small',
-		files: [
-			{
-				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_small/sam2.1_hiera_small.encoder.onnx',
-				r2Key: 'models/sam2.1-small/v1/encoder.onnx',
-			},
-			{
-				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_small/sam2.1_hiera_small.decoder.onnx',
-				r2Key: 'models/sam2.1-small/v1/decoder.onnx',
-			},
-		],
+		zip: {
+			zipUrl:
+				'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_small_20260221.zip',
+			files: [
+				{
+					zipPath: 'sam2.1_hiera_small.encoder.onnx',
+					r2Key: 'models/sam2.1-small/v1/encoder.onnx',
+				},
+				{
+					zipPath: 'sam2.1_hiera_small.decoder.onnx',
+					r2Key: 'models/sam2.1-small/v1/decoder.onnx',
+				},
+			],
+		},
 	},
 	{
 		modelId: 'sam2-tiny',
@@ -169,21 +187,16 @@ const WASM_FILES = [
 	'ort-wasm-simd-threaded.jspi.wasm',
 ];
 
-async function objectExists(key: string): Promise<boolean> {
+async function getObjectMeta(key: string): Promise<{ exists: boolean; size?: number }> {
 	try {
-		await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
-		return true;
+		const head = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+		return { exists: true, size: head.ContentLength };
 	} catch {
-		return false;
+		return { exists: false };
 	}
 }
 
 async function downloadAndUpload(sourceUrl: string, r2Key: string): Promise<void> {
-	if (await objectExists(r2Key)) {
-		console.log(`  SKIP (exists): ${r2Key}`);
-		return;
-	}
-
 	console.log(`  Downloading: ${sourceUrl}`);
 	const response = await fetch(sourceUrl, { redirect: 'follow' });
 	if (!response.ok) throw new Error(`Download failed: ${response.status} ${sourceUrl}`);
@@ -191,6 +204,16 @@ async function downloadAndUpload(sourceUrl: string, r2Key: string): Promise<void
 
 	const contentLength = Number(response.headers.get('content-length')) || 0;
 	console.log(`  Size: ${(contentLength / 1024 / 1024).toFixed(1)} MB`);
+
+	const meta = await getObjectMeta(r2Key);
+	if (meta.exists && meta.size === contentLength && contentLength > 0) {
+		console.log(`  SKIP (exists, ${meta.size} bytes matches): ${r2Key}`);
+		return;
+	}
+	if (meta.exists && !contentLength) {
+		console.log(`  SKIP (exists): ${r2Key}`);
+		return;
+	}
 
 	console.log(`  Uploading: ${r2Key}`);
 	const upload = new Upload({
@@ -217,13 +240,52 @@ async function downloadAndUpload(sourceUrl: string, r2Key: string): Promise<void
 	console.log(`\n  Done: ${r2Key}`);
 }
 
-async function uploadLocalFile(localPath: string, r2Key: string): Promise<void> {
-	if (await objectExists(r2Key)) {
-		console.log(`  SKIP (exists): ${r2Key}`);
+async function downloadZipAndUpload(zip: ZipUpload): Promise<void> {
+	// Check if all target keys already exist
+	const metas = await Promise.all(zip.files.map((f) => getObjectMeta(f.r2Key)));
+	if (metas.every((m) => m.exists)) {
+		for (const f of zip.files) console.log(`  SKIP (exists): ${f.r2Key}`);
 		return;
 	}
 
+	const tmpDir = mkdtempSync(join(tmpdir(), 'websam-upload-'));
+	try {
+		const zipPath = join(tmpDir, 'archive.zip');
+		console.log(`  Downloading ZIP: ${zip.zipUrl}`);
+		const response = await fetch(zip.zipUrl, { redirect: 'follow' });
+		if (!response.ok) throw new Error(`Download failed: ${response.status} ${zip.zipUrl}`);
+
+		const contentLength = Number(response.headers.get('content-length')) || 0;
+		if (contentLength) console.log(`  ZIP size: ${(contentLength / 1024 / 1024).toFixed(1)} MB`);
+
+		console.log('  Writing to disk...');
+		const arrayBuf = await response.arrayBuffer();
+		await Bun.write(zipPath, arrayBuf);
+		console.log('  Extracting...');
+		execSync(`unzip -o "${zipPath}" -d "${tmpDir}"`, { stdio: 'pipe' });
+
+		for (const file of zip.files) {
+			const fileMeta = await getObjectMeta(file.r2Key);
+			if (fileMeta.exists) {
+				console.log(`  SKIP (exists): ${file.r2Key}`);
+				continue;
+			}
+			const localPath = join(tmpDir, file.zipPath);
+			await uploadLocalFile(localPath, file.r2Key, 'application/octet-stream');
+		}
+	} finally {
+		rmSync(tmpDir, { recursive: true, force: true });
+	}
+}
+
+async function uploadLocalFile(localPath: string, r2Key: string, contentType = 'application/wasm'): Promise<void> {
 	const stat = statSync(localPath);
+	const meta = await getObjectMeta(r2Key);
+	if (meta.exists && meta.size === stat.size) {
+		console.log(`  SKIP (exists, ${meta.size} bytes matches): ${r2Key}`);
+		return;
+	}
+
 	console.log(`  Size: ${(stat.size / 1024 / 1024).toFixed(1)} MB`);
 	console.log(`  Uploading: ${r2Key}`);
 
@@ -233,7 +295,7 @@ async function uploadLocalFile(localPath: string, r2Key: string): Promise<void> 
 			Bucket: BUCKET,
 			Key: r2Key,
 			Body: createReadStream(localPath),
-			ContentType: 'application/wasm',
+			ContentType: contentType,
 			CacheControl: 'public, max-age=31536000, immutable',
 		},
 		partSize: 64 * 1024 * 1024,
@@ -280,11 +342,21 @@ async function main() {
 
 		for (const spec of specs) {
 			console.log(`Model: ${spec.modelId}`);
-			for (const file of spec.files) {
+			if (spec.zip) {
 				if (args['dry-run']) {
-					console.log(`  DRY RUN: ${file.sourceUrl} → ${file.r2Key}`);
+					console.log(`  DRY RUN (ZIP): ${spec.zip.zipUrl}`);
+					for (const f of spec.zip.files) console.log(`    ${f.zipPath} → ${f.r2Key}`);
 				} else {
-					await downloadAndUpload(file.sourceUrl, file.r2Key);
+					await downloadZipAndUpload(spec.zip);
+				}
+			}
+			if (spec.files) {
+				for (const file of spec.files) {
+					if (args['dry-run']) {
+						console.log(`  DRY RUN: ${file.sourceUrl} → ${file.r2Key}`);
+					} else {
+						await downloadAndUpload(file.sourceUrl, file.r2Key);
+					}
 				}
 			}
 			console.log();
