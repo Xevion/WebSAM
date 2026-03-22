@@ -83,3 +83,26 @@ export function resetViewport(): Viewport {
 export function effectiveScale(fit: Fit, viewport: Viewport): number {
 	return fit.scale * viewport.scale;
 }
+
+/**
+ * Whether individual image pixels are likely visible at the current zoom.
+ * Each image pixel spans `effectiveScale * dpr` device pixels; once that
+ * exceeds ~4 the pixel grid becomes distinguishable and nearest-neighbor
+ * interpolation is preferred over bicubic.
+ */
+const PIXEL_VISIBLE_DEVICE_PX = 4;
+export function isPixelVisible(fit: Fit, viewport: Viewport, dpr: number): boolean {
+	return effectiveScale(fit, viewport) * dpr >= PIXEL_VISIBLE_DEVICE_PX;
+}
+
+/**
+ * Dynamic max viewport scale that allows pixel-level inspection regardless
+ * of image resolution. Targets ~50 device pixels per image pixel — enough
+ * to clearly inspect individual pixels. Clamped to [10, 200] so tiny images
+ * don't get an absurdly low cap and huge images don't overflow.
+ */
+const PIXEL_INSPECT_DEVICE_PX = 50;
+export function maxViewportScale(fit: Fit, dpr: number): number {
+	const raw = PIXEL_INSPECT_DEVICE_PX / (fit.scale * dpr);
+	return Math.min(Math.max(raw, 10), 200);
+}

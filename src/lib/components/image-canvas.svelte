@@ -34,6 +34,8 @@ import {
 	zoomAtPoint,
 	resetViewport,
 	effectiveScale,
+	isPixelVisible,
+	maxViewportScale,
 } from '$lib/utils/viewport';
 import Upload from '@lucide/svelte/icons/upload';
 import ImageIcon from '@lucide/svelte/icons/image';
@@ -133,6 +135,8 @@ const fit = $derived(
 		: { scale: 1, offsetX: 0, offsetY: 0 },
 );
 
+const maxZoom = $derived(maxViewportScale(fit, dpr));
+
 // --- RAF-batched render loop ---
 
 let dirty = false;
@@ -231,9 +235,7 @@ function render() {
 	const t = computeTransform(fit, viewport, dpr);
 	ctx.setTransform(t.a, 0, 0, t.a, t.tx, t.ty);
 
-	// Adaptive smoothing: bicubic for the image at moderate zoom,
-	// nearest-neighbor past ~5x for pixel-perfect inspection.
-	const pixelZoom = effScale >= 5;
+	const pixelZoom = isPixelVisible(fit, viewport, dpr);
 
 	// Draw image layer (cutout mode skips this)
 	if (!(mask && appState.maskViewMode === 'cutout')) {
@@ -369,7 +371,7 @@ function handleWheel(event: WheelEvent) {
 	const cssX = event.clientX - rect.left;
 	const cssY = event.clientY - rect.top;
 	const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
-	viewport = zoomAtPoint(viewport, cssX, cssY, factor, 0.1, 20);
+	viewport = zoomAtPoint(viewport, cssX, cssY, factor, 0.1, maxZoom);
 }
 
 function handlePanStart(event: PointerEvent) {
@@ -484,7 +486,7 @@ function handleTouchMove(event: TouchEvent) {
 		const cssX = mid.x - rect.left;
 		const cssY = mid.y - rect.top;
 		const factor = dist / lastTouchDist;
-		viewport = zoomAtPoint(viewport, cssX, cssY, factor, 0.1, 20);
+		viewport = zoomAtPoint(viewport, cssX, cssY, factor, 0.1, maxZoom);
 
 		viewport = {
 			...viewport,
@@ -809,7 +811,7 @@ const cursorGrabbing = css({
 			<button
 				type="button"
 				class={zoomBtn}
-				onclick={() => { viewport = zoomAtPoint(viewport, canvasWidth / 2, canvasHeight / 2, 1.5, 0.1, 20); }}
+				onclick={() => { viewport = zoomAtPoint(viewport, canvasWidth / 2, canvasHeight / 2, 1.5, 0.1, maxZoom); }}
 				aria-label="Zoom in"
 			>
 				<ZoomIn size={16} />
@@ -817,7 +819,7 @@ const cursorGrabbing = css({
 			<button
 				type="button"
 				class={zoomBtn}
-				onclick={() => { viewport = zoomAtPoint(viewport, canvasWidth / 2, canvasHeight / 2, 1 / 1.5, 0.1, 20); }}
+				onclick={() => { viewport = zoomAtPoint(viewport, canvasWidth / 2, canvasHeight / 2, 1 / 1.5, 0.1, maxZoom); }}
 				aria-label="Zoom out"
 			>
 				<ZoomOut size={16} />
