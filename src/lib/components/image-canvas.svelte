@@ -152,6 +152,7 @@ $effect(() => {
 	void viewport;
 	void appState.currentImage;
 	void appState.maskResult;
+	void appState.maskResult?.selectedIndex;
 	void appState.maskViewMode;
 	void appState.maskColor;
 	void appState.maskOpacity;
