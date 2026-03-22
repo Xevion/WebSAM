@@ -53,8 +53,13 @@ const api = {
 			cachedEmbedding = null;
 			cachedDecodeResult = null;
 
-			const encoderFilename = `${model.id}-encoder`;
-			const decoderFilename = `${model.id}-decoder`;
+			// Include the file extension in the cache key so switching between
+			// .onnx and .ort formats (or any future format change) invalidates
+			// stale cached entries automatically.
+			const encoderExt = model.encoderKey.split('.').pop() ?? 'onnx';
+			const decoderExt = model.decoderKey.split('.').pop() ?? 'onnx';
+			const encoderFilename = `${model.id}-encoder.${encoderExt}`;
+			const decoderFilename = `${model.id}-decoder.${decoderExt}`;
 
 			// Check OPFS cache
 			const meta = await getCachedModelMeta(model.id);

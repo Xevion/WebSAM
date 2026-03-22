@@ -85,13 +85,16 @@ export async function createSession(model: ModelInfo, buffers: ModelBuffers): Pr
 		? [{ name: 'webgpu' }]
 		: ['wasm'];
 
-	// SAM2/SAM2.1 encoder ONNX files have a shape annotation mismatch in the
-	// Hiera backbone (declared=5 vs inferred=4 on dimension 0). Disabling graph
-	// optimization skips the shape inference validation that triggers this error.
-	// The decoder graph is clean and doesn't need this workaround.
+	// SAM2/SAM2.1 encoders are served as pre-optimized .ort files because the
+	// raw .onnx Hiera backbone has shape annotation mismatches (declared=0 vs
+	// inferred=4) that crash the WebGPU EP's internal transpose optimizer.
+	// The .ort format bakes optimizations offline, so we disable runtime graph
+	// optimization to avoid re-running them (and hitting the same crash).
+	// Decoders remain as .onnx and don't need this workaround.
+	const isPreOptimizedEncoder = model.encoderKey.endsWith('.ort');
 	const encoderOptions: InferenceSession.SessionOptions = {
 		executionProviders,
-		...(model.family !== 'sam1' && { graphOptimizationLevel: 'disabled' }),
+		...(isPreOptimizedEncoder && { graphOptimizationLevel: 'disabled' }),
 	};
 
 	const decoderOptions: InferenceSession.SessionOptions = {

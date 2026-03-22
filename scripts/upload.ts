@@ -68,23 +68,48 @@ interface ModelUploadSpec {
 	zip?: ZipUpload;
 }
 
-// Canonical sources — download from HuggingFace, upload to R2 under versioned keys
-const UPLOAD_SPECS: ModelUploadSpec[] = [
+// SAM2/SAM2.1 encoders must be converted to .ort format before upload.
+// The raw .onnx Hiera backbone has shape annotation mismatches that crash
+// the WebGPU EP. The .ort format bakes optimizations offline, avoiding the crash.
+// Decoders are fine as .onnx.
+//
+// Conversion: python3 -m onnxruntime.tools.convert_onnx_models_to_ort <encoder.onnx>
+// This produces encoder.with_runtime_opt.ort which is what we upload as encoder.ort.
+
+interface OrtConversion {
+	/** Direct download URL for the .onnx encoder (used for non-zip models) */
+	sourceUrl?: string;
+	/** Filename of the .onnx source inside a ZIP archive (used for zip models) */
+	zipPath?: string;
+	/** R2 key for the converted .ort file */
+	r2Key: string;
+}
+
+interface ModelUploadSpecExt extends ModelUploadSpec {
+	/** Encoder files that need .onnx -> .ort conversion before upload */
+	ortConversions?: OrtConversion[];
+}
+
+// Canonical sources -- download from HuggingFace, upload to R2 under versioned keys.
+// SAM2/SAM2.1 encoders use vietanhdev exports (consistent tensor naming: image/image_embed).
+const UPLOAD_SPECS: ModelUploadSpecExt[] = [
 	{
 		modelId: 'sam2.1-tiny',
 		zip: {
 			zipUrl: 'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_tiny_20260221.zip',
 			files: [
 				{
-					zipPath: 'sam2.1_hiera_tiny.encoder.onnx',
-					r2Key: 'models/sam2.1-tiny/v1/encoder.onnx',
-				},
-				{
 					zipPath: 'sam2.1_hiera_tiny.decoder.onnx',
 					r2Key: 'models/sam2.1-tiny/v1/decoder.onnx',
 				},
 			],
 		},
+		ortConversions: [
+			{
+				zipPath: 'sam2.1_hiera_tiny.encoder.onnx',
+				r2Key: 'models/sam2.1-tiny/v1/encoder.ort',
+			},
+		],
 	},
 	{
 		modelId: 'sam2.1-small',
@@ -92,28 +117,68 @@ const UPLOAD_SPECS: ModelUploadSpec[] = [
 			zipUrl: 'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_small_20260221.zip',
 			files: [
 				{
-					zipPath: 'sam2.1_hiera_small.encoder.onnx',
-					r2Key: 'models/sam2.1-small/v1/encoder.onnx',
-				},
-				{
 					zipPath: 'sam2.1_hiera_small.decoder.onnx',
 					r2Key: 'models/sam2.1-small/v1/decoder.onnx',
 				},
 			],
 		},
+		ortConversions: [
+			{
+				zipPath: 'sam2.1_hiera_small.encoder.onnx',
+				r2Key: 'models/sam2.1-small/v1/encoder.ort',
+			},
+		],
+	},
+	{
+		modelId: 'sam2.1-baseplus',
+		zip: {
+			zipUrl: 'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_base_plus_20260221.zip',
+			files: [
+				{
+					zipPath: 'sam2.1_hiera_base_plus.decoder.onnx',
+					r2Key: 'models/sam2.1-baseplus/v1/decoder.onnx',
+				},
+			],
+		},
+		ortConversions: [
+			{
+				zipPath: 'sam2.1_hiera_base_plus.encoder.onnx',
+				r2Key: 'models/sam2.1-baseplus/v1/encoder.ort',
+			},
+		],
+	},
+	{
+		modelId: 'sam2.1-large',
+		zip: {
+			zipUrl: 'https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/sam2.1_hiera_large_20260221.zip',
+			files: [
+				{
+					zipPath: 'sam2.1_hiera_large.decoder.onnx',
+					r2Key: 'models/sam2.1-large/v1/decoder.onnx',
+				},
+			],
+		},
+		ortConversions: [
+			{
+				zipPath: 'sam2.1_hiera_large.encoder.onnx',
+				r2Key: 'models/sam2.1-large/v1/encoder.ort',
+			},
+		],
 	},
 	{
 		modelId: 'sam2-tiny',
 		files: [
 			{
 				sourceUrl:
-					'https://huggingface.co/onnx-community/sam2-hiera-tiny/resolve/main/onnx/vision_encoder.onnx',
-				r2Key: 'models/sam2-tiny/v1/encoder.onnx',
+					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_tiny.decoder.onnx',
+				r2Key: 'models/sam2-tiny/v1/decoder.onnx',
 			},
+		],
+		ortConversions: [
 			{
 				sourceUrl:
-					'https://huggingface.co/onnx-community/sam2-hiera-tiny/resolve/main/onnx/prompt_encoder_mask_decoder.onnx',
-				r2Key: 'models/sam2-tiny/v1/decoder.onnx',
+					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_tiny.encoder.onnx',
+				r2Key: 'models/sam2-tiny/v1/encoder.ort',
 			},
 		],
 	},
@@ -122,13 +187,15 @@ const UPLOAD_SPECS: ModelUploadSpec[] = [
 		files: [
 			{
 				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_small.encoder.onnx',
-				r2Key: 'models/sam2-small/v1/encoder.onnx',
-			},
-			{
-				sourceUrl:
 					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_small.decoder.onnx',
 				r2Key: 'models/sam2-small/v1/decoder.onnx',
+			},
+		],
+		ortConversions: [
+			{
+				sourceUrl:
+					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_small.encoder.onnx',
+				r2Key: 'models/sam2-small/v1/encoder.ort',
 			},
 		],
 	},
@@ -137,13 +204,15 @@ const UPLOAD_SPECS: ModelUploadSpec[] = [
 		files: [
 			{
 				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_base_plus.encoder.onnx',
-				r2Key: 'models/sam2-baseplus/v1/encoder.onnx',
-			},
-			{
-				sourceUrl:
 					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_base_plus.decoder.onnx',
 				r2Key: 'models/sam2-baseplus/v1/decoder.onnx',
+			},
+		],
+		ortConversions: [
+			{
+				sourceUrl:
+					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_base_plus.encoder.onnx',
+				r2Key: 'models/sam2-baseplus/v1/encoder.ort',
 			},
 		],
 	},
@@ -152,13 +221,15 @@ const UPLOAD_SPECS: ModelUploadSpec[] = [
 		files: [
 			{
 				sourceUrl:
-					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_large.encoder.onnx',
-				r2Key: 'models/sam2-large/v1/encoder.onnx',
-			},
-			{
-				sourceUrl:
 					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_large.decoder.onnx',
 				r2Key: 'models/sam2-large/v1/decoder.onnx',
+			},
+		],
+		ortConversions: [
+			{
+				sourceUrl:
+					'https://huggingface.co/vietanhdev/segment-anything-2-onnx-models/resolve/main/sam2_hiera_large.encoder.onnx',
+				r2Key: 'models/sam2-large/v1/encoder.ort',
 			},
 		],
 	},
@@ -240,11 +311,17 @@ async function downloadAndUpload(sourceUrl: string, r2Key: string): Promise<void
 	console.log(`\n  Done: ${r2Key}`);
 }
 
-async function downloadZipAndUpload(zip: ZipUpload): Promise<void> {
-	// Check if all target keys already exist
-	const metas = await Promise.all(zip.files.map((f) => getObjectMeta(f.r2Key)));
+/**
+ * Downloads a ZIP, extracts files, uploads them to R2, and optionally converts
+ * encoder .onnx files to .ort format before uploading.
+ * Returns the tmpDir path (caller must pass ortConversions to handle those).
+ */
+async function downloadZipAndUpload(zip: ZipUpload, ortConversions?: OrtConversion[]): Promise<void> {
+	// Collect all R2 keys to check existence
+	const allKeys = [...zip.files.map((f) => f.r2Key), ...(ortConversions ?? []).map((c) => c.r2Key)];
+	const metas = await Promise.all(allKeys.map((k) => getObjectMeta(k)));
 	if (metas.every((m) => m.exists)) {
-		for (const f of zip.files) console.log(`  SKIP (exists): ${f.r2Key}`);
+		for (const k of allKeys) console.log(`  SKIP (exists): ${k}`);
 		return;
 	}
 
@@ -264,6 +341,7 @@ async function downloadZipAndUpload(zip: ZipUpload): Promise<void> {
 		console.log('  Extracting...');
 		execSync(`unzip -o "${zipPath}" -d "${tmpDir}"`, { stdio: 'pipe' });
 
+		// Upload direct files (decoders)
 		for (const file of zip.files) {
 			const fileMeta = await getObjectMeta(file.r2Key);
 			if (fileMeta.exists) {
@@ -273,9 +351,75 @@ async function downloadZipAndUpload(zip: ZipUpload): Promise<void> {
 			const localPath = join(tmpDir, file.zipPath);
 			await uploadLocalFile(localPath, file.r2Key, 'application/octet-stream');
 		}
+
+		// Convert and upload encoder .ort files
+		if (ortConversions) {
+			for (const conv of ortConversions) {
+				const convMeta = await getObjectMeta(conv.r2Key);
+				if (convMeta.exists) {
+					console.log(`  SKIP (exists): ${conv.r2Key}`);
+					continue;
+				}
+				if (!conv.zipPath) throw new Error(`ORT conversion missing zipPath for ${conv.r2Key}`);
+				const onnxPath = join(tmpDir, conv.zipPath);
+				const ortPath = await convertToOrt(onnxPath);
+				await uploadLocalFile(ortPath, conv.r2Key, 'application/octet-stream');
+			}
+		}
 	} finally {
 		rmSync(tmpDir, { recursive: true, force: true });
 	}
+}
+
+/**
+ * Downloads an encoder .onnx file, converts to .ort, and uploads to R2.
+ */
+async function downloadConvertAndUpload(conv: OrtConversion): Promise<void> {
+	const meta = await getObjectMeta(conv.r2Key);
+	if (meta.exists) {
+		console.log(`  SKIP (exists): ${conv.r2Key}`);
+		return;
+	}
+
+	if (!conv.sourceUrl) throw new Error(`ORT conversion missing sourceUrl for ${conv.r2Key}`);
+
+	const tmpDir = mkdtempSync(join(tmpdir(), 'websam-ort-'));
+	try {
+		const filename = conv.sourceUrl.split('/').pop()!;
+		const onnxPath = join(tmpDir, filename);
+
+		console.log(`  Downloading encoder: ${conv.sourceUrl}`);
+		const response = await fetch(conv.sourceUrl, { redirect: 'follow' });
+		if (!response.ok) throw new Error(`Download failed: ${response.status} ${conv.sourceUrl}`);
+
+		const contentLength = Number(response.headers.get('content-length')) || 0;
+		if (contentLength) console.log(`  Encoder size: ${(contentLength / 1024 / 1024).toFixed(1)} MB`);
+
+		const arrayBuf = await response.arrayBuffer();
+		await Bun.write(onnxPath, arrayBuf);
+
+		const ortPath = await convertToOrt(onnxPath);
+		await uploadLocalFile(ortPath, conv.r2Key, 'application/octet-stream');
+	} finally {
+		rmSync(tmpDir, { recursive: true, force: true });
+	}
+}
+
+/**
+ * Converts an .onnx file to pre-optimized .ort format using onnxruntime Python.
+ * Returns the path to the .with_runtime_opt.ort file.
+ */
+function convertToOrt(onnxPath: string): string {
+	console.log(`  Converting to ORT: ${onnxPath}`);
+	execSync(`python3 -m onnxruntime.tools.convert_onnx_models_to_ort "${onnxPath}"`, { stdio: 'pipe' });
+	// The tool produces <basename>.with_runtime_opt.ort alongside the .onnx
+	const ortPath = onnxPath.replace(/\.onnx$/, '.with_runtime_opt.ort');
+	if (!existsSync(ortPath)) {
+		throw new Error(`ORT conversion failed: expected ${ortPath} not found`);
+	}
+	const size = statSync(ortPath).size;
+	console.log(`  ORT file: ${(size / 1024 / 1024).toFixed(1)} MB`);
+	return ortPath;
 }
 
 async function uploadLocalFile(localPath: string, r2Key: string, contentType = 'application/wasm'): Promise<void> {
@@ -380,8 +524,11 @@ async function main() {
 				if (args['dry-run']) {
 					console.log(`  DRY RUN (ZIP): ${spec.zip.zipUrl}`);
 					for (const f of spec.zip.files) console.log(`    ${f.zipPath} -> ${f.r2Key}`);
+					if (spec.ortConversions) {
+						for (const c of spec.ortConversions) console.log(`    ORT: ${c.zipPath} -> ${c.r2Key}`);
+					}
 				} else {
-					await downloadZipAndUpload(spec.zip);
+					await downloadZipAndUpload(spec.zip, spec.ortConversions);
 				}
 			}
 			if (spec.files) {
@@ -390,6 +537,16 @@ async function main() {
 						console.log(`  DRY RUN: ${file.sourceUrl} -> ${file.r2Key}`);
 					} else {
 						await downloadAndUpload(file.sourceUrl, file.r2Key);
+					}
+				}
+			}
+			// Handle ORT conversions from direct URL downloads (non-zip models)
+			if (!spec.zip && spec.ortConversions) {
+				for (const conv of spec.ortConversions) {
+					if (args['dry-run']) {
+						console.log(`  DRY RUN ORT: ${conv.sourceUrl} -> ${conv.r2Key}`);
+					} else {
+						await downloadConvertAndUpload(conv);
 					}
 				}
 			}
