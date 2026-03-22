@@ -231,11 +231,20 @@ function render() {
 	const t = computeTransform(fit, viewport, dpr);
 	ctx.setTransform(t.a, 0, 0, t.a, t.tx, t.ty);
 
+	// Adaptive smoothing: bicubic for the image at moderate zoom,
+	// nearest-neighbor past ~5x for pixel-perfect inspection.
+	const pixelZoom = effScale >= 5;
+
 	// Draw image layer (cutout mode skips this)
 	if (!(mask && appState.maskViewMode === 'cutout')) {
+		ctx.imageSmoothingEnabled = !pixelZoom;
+		ctx.imageSmoothingQuality = 'high';
 		const imgLayer = renderImageLayer(img);
 		ctx.drawImage(imgLayer, 0, 0);
 	}
+
+	// Mask layers always use nearest-neighbor for crisp boundaries
+	ctx.imageSmoothingEnabled = false;
 
 	// Everything mode masks
 	if (appState.everythingMasks.length > 0) {
@@ -246,10 +255,14 @@ function render() {
 
 	// Primary mask
 	if (mask && appState.maskViewMode === 'cutout') {
+		// Cutout composites the image through the mask — use image smoothing rules
+		ctx.imageSmoothingEnabled = !pixelZoom;
+		ctx.imageSmoothingQuality = 'high';
 		const cutoutLayer = renderMaskLayer(mask, appState.maskColor, appState.maskOpacity, 'cutout', img);
 		if (cutoutLayer) {
 			ctx.drawImage(cutoutLayer, 0, 0);
 		}
+		ctx.imageSmoothingEnabled = false;
 	} else if (mask && appState.maskViewMode === 'outline') {
 		// Marching ants: drawn directly on the main canvas (not cached) so they
 		// animate smoothly and stay 1px at any zoom level.
@@ -260,7 +273,7 @@ function render() {
 		if (maskLayer) ctx.drawImage(maskLayer, 0, 0);
 	}
 
-	// Hover delta
+	// Hover delta (mask data — keep nearest-neighbor)
 	if (appState.hoverMask && appState.interactionMode === 'point') {
 		const hoverLayer = renderHoverDeltaLayer(appState.hoverMask, mask);
 		if (hoverLayer) ctx.drawImage(hoverLayer, 0, 0);
