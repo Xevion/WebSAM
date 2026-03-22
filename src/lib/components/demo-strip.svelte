@@ -18,10 +18,17 @@ const { onBrowseAll }: Props = $props();
 
 let loading = $state<string | null>(null);
 let failedImages = new SvelteSet<string>();
+let loadedImages = new SvelteSet<string>();
 
 function handleImgError(id: string) {
 	failedImages.add(id);
 }
+
+function handleImgLoad(id: string) {
+	loadedImages.add(id);
+}
+
+const SKELETON_COUNT = 6;
 
 onMount(() => {
 	void demoImageStore.load();
@@ -50,9 +57,11 @@ const strip = css({
 	'&::-webkit-scrollbar-track': { background: 'transparent' },
 	'&::-webkit-scrollbar-thumb': { background: 'var(--colors-border)', borderRadius: '9999px' },
 	'&::-webkit-scrollbar-thumb:hover': { background: 'var(--colors-fg-subtle)' },
+	'&::-webkit-scrollbar-button': { display: 'none' },
 });
 
 const thumbBtn = css({
+	position: 'relative',
 	flexShrink: 0,
 	w: '28',
 	h: '20',
@@ -98,17 +107,29 @@ const label = css({
 	letterSpacing: '0.05em',
 });
 
-const thumbError = css({
-	w: 'full',
-	h: 'full',
+const thumbPlaceholder = css({
+	position: 'absolute',
+	inset: 0,
 	display: 'flex',
 	alignItems: 'center',
 	justifyContent: 'center',
 	color: 'fg.subtle',
 	bg: 'bg.muted',
+});
+
+const skeleton = css({
+	animation: 'pulse',
+});
+
+const skeletonThumb = css({
+	flexShrink: 0,
+	w: '28',
+	h: '20',
 	borderRadius: 'lg',
+	bg: 'bg.muted',
 	border: '1px solid',
 	borderColor: 'border',
+	animation: 'pulse',
 });
 
 const browseLink = css({
@@ -121,15 +142,21 @@ const browseLink = css({
 });
 </script>
 
-{#if demoImageStore.loaded && demoImageStore.heroImages.length > 0}
-	<div class={wrapper}>
-		<div class={header}>
-			<span class={label}>Or try a demo image</span>
+<div class={wrapper}>
+	<div class={header}>
+		<span class={label}>Or try a demo image</span>
+		{#if demoImageStore.loaded}
 			<button type="button" class={browseLink} onclick={onBrowseAll}>
 				Browse all
 			</button>
-		</div>
-		<div class={strip}>
+		{/if}
+	</div>
+	<div class={strip}>
+		{#if !demoImageStore.loaded}
+			{#each { length: SKELETON_COUNT } as _}
+				<div class={skeletonThumb}></div>
+			{/each}
+		{:else}
 			{#each demoImageStore.heroImages as image (image.id)}
 				<Tooltip content={image.name}>
 					{#snippet children(props: TooltipProps)}
@@ -141,15 +168,19 @@ const browseLink = css({
 							disabled={loading !== null}
 						>
 							{#if failedImages.has(image.id) || !demoImageStore.thumbnailUrl(image, 128)}
-								<div class={thumbError}>
+								<div class={thumbPlaceholder}>
 									<ImageOff size={20} />
 								</div>
 							{:else}
+								{#if !loadedImages.has(image.id)}
+									<div class={cx(thumbPlaceholder, skeleton)}></div>
+								{/if}
 								<img
 									src={demoImageStore.thumbnailUrl(image, 128)}
 									alt={image.name}
 									class={thumbImg}
-									loading="lazy"
+									style:opacity={loadedImages.has(image.id) ? 1 : 0}
+									onload={() => handleImgLoad(image.id)}
 									onerror={() => handleImgError(image.id)}
 								/>
 							{/if}
@@ -157,6 +188,6 @@ const browseLink = css({
 					{/snippet}
 				</Tooltip>
 			{/each}
-		</div>
+		{/if}
 	</div>
-{/if}
+</div>

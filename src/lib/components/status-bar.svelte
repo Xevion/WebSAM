@@ -62,8 +62,8 @@ const stageLabel = $derived.by(() => {
 			return 'Ready \u2014 drop an image';
 		case 'no-model':
 			return 'Select a model';
-		default:
-			return 'Waiting';
+		case 'downloading':
+			return 'Downloading model\u2026';
 	}
 });
 

@@ -19,7 +19,7 @@ const progressPercent = $derived(
 const stageLabel = $derived.by(() => {
 	switch (progress.stage) {
 		case 'idle':
-			return 'Waiting...';
+			return 'Preparing download\u2026';
 		case 'downloading-encoder':
 			return 'Downloading encoder...';
 		case 'downloading-decoder':
