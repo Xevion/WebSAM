@@ -32,22 +32,25 @@ echo "YOUR_ACCOUNT_ID" | bunx wrangler secret put R2_ACCOUNT_ID
 The deploy workflow also passes these via `wrangler-action`'s `secrets` field,
 so subsequent deploys preserve them.
 
-## Initial Setup: Upload Models to R2
+## Initial Setup: Upload to R2
 
 The upload script is idempotent -- it skips files that already exist with matching size.
 
 ```bash
-# Upload all models and WASM (safe to re-run)
-bun run scripts/upload-models.ts
+# Upload everything (models + WASM + demo images)
+bun run scripts/upload.ts
 
 # Specific model only
-bun run scripts/upload-models.ts --model=sam2.1-tiny
+bun run scripts/upload.ts --model=sam2.1-tiny
 
 # WASM files only
-bun run scripts/upload-models.ts --wasm-only
+bun run scripts/upload.ts --wasm-only
+
+# Demo images only
+bun run scripts/upload.ts --demos-only
 
 # Preview what would be uploaded
-bun run scripts/upload-models.ts --dry-run
+bun run scripts/upload.ts --dry-run
 ```
 
 Credentials are read from `.env` (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID).
@@ -68,6 +71,22 @@ bun run deploy:dry-run   # Preview only
 If wrangler fails with this error, a stale OAuth token may exist at
 `~/.config/.wrangler/config/default.toml`. Delete that file -- wrangler
 will then use `CLOUDFLARE_API_TOKEN` from `.env` instead.
+
+## CORS for Demo Images
+
+Demo images are served from `data.websam.xevion.dev` (R2 custom domain) with
+Cloudflare Image Resizing (`/cdn-cgi/image/...`). Image Resizing does not
+pass through R2's CORS headers, so a **Response Header Modification Rule** on
+the `xevion.dev` zone is required.
+
+**Cloudflare Dashboard > Rules > Transform Rules > Modify Response Header:**
+
+- **Expression**: `http.host eq "data.websam.xevion.dev"` (combined via `or`
+  with any other CDN hostnames sharing the same rule)
+- **Action**: Set `Access-Control-Allow-Origin` to `*`
+
+Without this rule, browser fetches from `websam.xevion.dev` to the CDN will
+fail with a CORS error.
 
 ## Local Development
 

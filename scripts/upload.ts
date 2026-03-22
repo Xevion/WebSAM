@@ -1,20 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Downloads ONNX models from canonical sources and uploads to R2.
- * Also uploads ORT WASM files from node_modules.
+ * Uploads ONNX models, ORT WASM files, and demo images to R2.
  *
  * Usage:
  *   R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... R2_ACCOUNT_ID=... \
- *     bun run scripts/upload-models.ts [--model=sam2.1-tiny] [--dry-run] [--wasm-only]
+ *     bun run scripts/upload.ts [--model=sam2.1-tiny] [--dry-run] [--wasm-only] [--demos-only]
  *
- * Without --model, uploads all models.
+ * Without flags, uploads everything (models + WASM + demo images).
+ * With --model, uploads only the specified model.
  * With --dry-run, shows what would be uploaded without uploading.
- * With --wasm-only, only uploads WASM files (skips models).
+ * With --wasm-only, only uploads WASM files.
+ * With --demos-only, only uploads demo images.
  */
 import { S3Client, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { parseArgs } from 'util';
-import { createReadStream, statSync, mkdtempSync, rmSync } from 'node:fs';
+import { createReadStream, statSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
@@ -24,6 +25,7 @@ const { values: args } = parseArgs({
 		model: { type: 'string' },
 		'dry-run': { type: 'boolean', default: false },
 		'wasm-only': { type: 'boolean', default: false },
+		'demos-only': { type: 'boolean', default: false },
 	},
 });
 
@@ -326,8 +328,42 @@ async function uploadWasmFiles(): Promise<void> {
 	console.log();
 }
 
+interface DemoManifest {
+	version: number;
+	images: Array<{ id: string; key: string }>;
+}
+
+async function uploadDemoImages(): Promise<void> {
+	const manifestPath = resolve('static/demo-images.json');
+	if (!existsSync(manifestPath)) {
+		console.log('No demo-images.json found, skipping demo image upload.\n');
+		return;
+	}
+
+	const manifest: DemoManifest = await Bun.file(manifestPath).json();
+	console.log(`Uploading ${manifest.images.length} demo image(s)...\n`);
+
+	for (const image of manifest.images) {
+		const localPath = resolve('static', image.key);
+		console.log(`Demo: ${image.id}`);
+		if (!existsSync(localPath)) {
+			console.log(`  SKIP (not downloaded): ${localPath}`);
+			continue;
+		}
+		if (args['dry-run']) {
+			console.log(`  DRY RUN: ${localPath} -> ${image.key}`);
+		} else {
+			await uploadLocalFile(localPath, image.key, 'image/jpeg');
+		}
+	}
+	console.log();
+}
+
 async function main() {
-	if (!args['wasm-only']) {
+	const demosOnly = args['demos-only'];
+	const wasmOnly = args['wasm-only'];
+
+	if (!wasmOnly && !demosOnly) {
 		const specs = args.model ? UPLOAD_SPECS.filter((s) => s.modelId === args.model) : UPLOAD_SPECS;
 
 		if (specs.length === 0) {
@@ -343,7 +379,7 @@ async function main() {
 			if (spec.zip) {
 				if (args['dry-run']) {
 					console.log(`  DRY RUN (ZIP): ${spec.zip.zipUrl}`);
-					for (const f of spec.zip.files) console.log(`    ${f.zipPath} → ${f.r2Key}`);
+					for (const f of spec.zip.files) console.log(`    ${f.zipPath} -> ${f.r2Key}`);
 				} else {
 					await downloadZipAndUpload(spec.zip);
 				}
@@ -351,7 +387,7 @@ async function main() {
 			if (spec.files) {
 				for (const file of spec.files) {
 					if (args['dry-run']) {
-						console.log(`  DRY RUN: ${file.sourceUrl} → ${file.r2Key}`);
+						console.log(`  DRY RUN: ${file.sourceUrl} -> ${file.r2Key}`);
 					} else {
 						await downloadAndUpload(file.sourceUrl, file.r2Key);
 					}
@@ -361,7 +397,13 @@ async function main() {
 		}
 	}
 
-	await uploadWasmFiles();
+	if (!demosOnly) {
+		await uploadWasmFiles();
+	}
+
+	if (!wasmOnly) {
+		await uploadDemoImages();
+	}
 
 	console.log('Upload complete.');
 }

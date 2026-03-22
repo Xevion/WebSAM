@@ -35,6 +35,6 @@ vite.config.ts.timestamp-*
 # ONNX model files (downloaded for local dev)
 /models
 
-# Demo images (downloaded via scripts/download-demo-images.ts)
+# Demo images (downloaded via scripts/download.ts)
 /static/demos
 /static/demos/*.meta.json

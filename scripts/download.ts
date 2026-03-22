@@ -2,7 +2,7 @@
 /**
  * Downloads demo images from Pexels API and generates the manifest.
  *
- * Usage: PEXELS_API_KEY=<key> bun run scripts/download-demo-images.ts
+ * Usage: PEXELS_API_KEY=<key> bun run scripts/download.ts
  *
  * Downloads images to static/demos/ and writes static/demo-images.json.
  * Uses ImageMagick `identify` for metadata extraction.
