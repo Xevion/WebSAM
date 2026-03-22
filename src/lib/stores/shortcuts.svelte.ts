@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-expressions -- LogTape tagged template API */
 import { getLogger } from '@logtape/logtape';
 import { registerHotkey } from '@ramstack/hotkey';
 import { appState, resetPrompts } from './app-state.svelte';

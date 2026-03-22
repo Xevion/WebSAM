@@ -153,7 +153,7 @@ const browseLink = css({
 	</div>
 	<div class={strip}>
 		{#if !demoImageStore.loaded}
-			{#each { length: SKELETON_COUNT } as _}
+			{#each { length: SKELETON_COUNT } as _, i (i)}
 				<div class={skeletonThumb}></div>
 			{/each}
 		{:else}
