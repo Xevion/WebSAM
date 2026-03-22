@@ -8,6 +8,8 @@ import {
 	drawHoverTriggerMarker,
 	drawHoverInferenceRing,
 	drawMaskOverlay,
+	drawMarchingAnts,
+	getCachedContours,
 	renderImageLayer,
 	renderMaskLayer,
 	renderHoverDeltaLayer,
@@ -182,6 +184,19 @@ $effect(() => {
 	return () => cancelAnimationFrame(animId);
 });
 
+// Continuous rAF loop for marching ants outline animation
+$effect(() => {
+	const mask = appState.maskResult?.masks[appState.maskResult.selectedIndex] ?? null;
+	if (!mask || appState.maskViewMode !== 'outline') return;
+	let animId: number;
+	function tick() {
+		markDirty();
+		animId = requestAnimationFrame(tick);
+	}
+	animId = requestAnimationFrame(tick);
+	return () => cancelAnimationFrame(animId);
+});
+
 // Cleanup RAF on unmount
 $effect(() => {
 	return () => {
@@ -235,6 +250,11 @@ function render() {
 		if (cutoutLayer) {
 			ctx.drawImage(cutoutLayer, 0, 0);
 		}
+	} else if (mask && appState.maskViewMode === 'outline') {
+		// Marching ants: drawn directly on the main canvas (not cached) so they
+		// animate smoothly and stay 1px at any zoom level.
+		const contours = getCachedContours(mask);
+		drawMarchingAnts(ctx, contours, effScale, performance.now());
 	} else if (mask) {
 		const maskLayer = renderMaskLayer(mask, appState.maskColor, appState.maskOpacity, appState.maskViewMode, null);
 		if (maskLayer) ctx.drawImage(maskLayer, 0, 0);

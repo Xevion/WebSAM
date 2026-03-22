@@ -77,6 +77,69 @@ export function drawMaskOutline(
 	}
 }
 
+/** Get contours for a mask, using the module-level cache when possible. */
+export function getCachedContours(mask: ImageData): [number, number][][] {
+	if (cachedContourMaskRef !== mask) {
+		cachedContours = extractContours(mask);
+		cachedContourMaskRef = mask;
+	}
+	return cachedContours!;
+}
+
+function strokeContours(ctx: CanvasRenderingContext2D, contours: [number, number][][]): void {
+	for (const polygon of contours) {
+		if (polygon.length < 2) continue;
+		ctx.beginPath();
+		ctx.moveTo(polygon[0][0], polygon[0][1]);
+		for (let i = 1; i < polygon.length; i++) {
+			ctx.lineTo(polygon[i][0], polygon[i][1]);
+		}
+		ctx.closePath();
+		ctx.stroke();
+	}
+}
+
+/**
+ * Draw Photoshop-style marching ants along contour polygons.
+ * Uses a dual-stroke technique (black + white dashed, offset by half a dash)
+ * so the outline is visible on any background without obscuring content.
+ * Line width stays constant in screen pixels regardless of zoom.
+ */
+export function drawMarchingAnts(
+	ctx: CanvasRenderingContext2D,
+	contours: [number, number][][],
+	effScale: number,
+	time: number,
+): void {
+	const dashLen = 6 / effScale;
+	const lineW = 1 / effScale;
+	// Advance at a constant 40 CSS-px/s regardless of zoom or DPI.
+	// dashLen is in image-space (6 / effScale), so the offset must also
+	// be in image-space: screenSpeed / effScale converts CSS-px/ms to
+	// image-px/ms, keeping the perceived march rate identical at every
+	// zoom level and on every display density.
+	const offset = ((time * 0.04) / effScale) % (dashLen * 2);
+
+	ctx.save();
+	ctx.lineWidth = lineW;
+	ctx.lineJoin = 'round';
+	ctx.lineCap = 'butt';
+	ctx.setLineDash([dashLen, dashLen]);
+
+	// Dark stroke
+	ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+	ctx.lineDashOffset = -offset;
+	strokeContours(ctx, contours);
+
+	// Light stroke offset by half dash to fill gaps
+	ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+	ctx.lineDashOffset = -(offset + dashLen);
+	strokeContours(ctx, contours);
+
+	ctx.setLineDash([]);
+	ctx.restore();
+}
+
 /**
  * Draws a crosshair at the cursor position in screen space.
  * Temporarily resets the transform so the crosshair follows the CSS cursor
