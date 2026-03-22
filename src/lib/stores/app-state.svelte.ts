@@ -88,3 +88,8 @@ export function clearImage(): void {
 	void deleteCurrentImage();
 	scheduleSave();
 }
+
+export const mobileUI = $state({
+	drawerOpen: false,
+	sheetOpen: false,
+});

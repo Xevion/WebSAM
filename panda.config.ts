@@ -185,5 +185,21 @@ export default defineConfig({
 			from: { opacity: 0, transform: 'translateY(-8px)' },
 			to: { opacity: 1, transform: 'translateY(0)' },
 		},
+		'@keyframes slide-in-left': {
+			from: { transform: 'translateX(-100%)' },
+			to: { transform: 'translateX(0)' },
+		},
+		'@keyframes slide-out-left': {
+			from: { transform: 'translateX(0)' },
+			to: { transform: 'translateX(-100%)' },
+		},
+		'@keyframes slide-up': {
+			from: { transform: 'translateY(100%)' },
+			to: { transform: 'translateY(0)' },
+		},
+		'@keyframes slide-down': {
+			from: { transform: 'translateY(0)' },
+			to: { transform: 'translateY(100%)' },
+		},
 	},
 });

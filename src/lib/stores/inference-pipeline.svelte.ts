@@ -5,6 +5,7 @@ import { getWorkerApi, withTimeout } from '$lib/inference/worker-api';
 import { imageToRawData } from '$lib/utils/image';
 import { errorMessage } from '$lib/utils/error';
 import { toaster } from '$lib/stores/toast.svelte';
+import { scheduleSave } from './persistence.svelte';
 import * as Comlink from 'comlink';
 import type { ModelInfo, Point, Box, DownloadProgress, EmbeddingInfo } from '$lib/inference/types';
 
@@ -425,6 +426,12 @@ export function encodeCurrentImage(): void {
  * (from ready state) and re-decode (while already decoding).
  */
 export function decodePrompts(points: Point[], box: Box | null): void {
+	if (points.length === 0 && !box) {
+		logger.warn('decodePrompts skipped: no points or box provided');
+		appState.maskResult = null;
+		scheduleSave();
+		return;
+	}
 	const snappedPoints = $state.snapshot(points);
 	const snappedBox = box ? $state.snapshot(box) : null;
 	if (pipeline.current === 'ready') {

@@ -54,8 +54,8 @@ function runEverythingMode() {
 const bar = css({
 	display: 'flex',
 	alignItems: 'center',
-	gap: '2',
-	px: '3',
+	gap: { base: '1', md: '2' },
+	px: { base: '2', md: '3' },
 	py: '2',
 	bg: 'bg.subtle',
 	borderBottomWidth: '1px',
@@ -68,6 +68,7 @@ const separator = css({
 	h: '6',
 	bg: 'border',
 	mx: '1',
+	display: { base: 'none', md: 'block' },
 });
 
 const hasMask = $derived(appState.maskResult !== null);
@@ -118,7 +119,7 @@ function handleChangeImage(event: Event) {
 				})}
 			>
 				<Sparkles size={14} />
-				Everything
+				<span class={css({ display: { base: 'none', md: 'inline' } })}>Everything</span>
 			</button>
 		{/snippet}
 	</Tooltip>
@@ -182,7 +183,7 @@ function handleChangeImage(event: Event) {
 			<span {...props()}>
 				<Button size="sm" variant="ghost" onclick={exportCutout} disabled={!hasMask}>
 					<DownloadIcon size={14} />
-					Cutout
+					<span class={css({ display: { base: 'none', md: 'inline' } })}>Cutout</span>
 				</Button>
 			</span>
 		{/snippet}

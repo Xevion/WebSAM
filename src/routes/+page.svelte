@@ -12,6 +12,11 @@ import { errorMessage } from '$lib/utils/error';
 import { css } from 'styled-system/css';
 import { browser } from '$app/environment';
 import { initShortcuts, shortcutHelp, galleryShortcut } from '$lib/stores/shortcuts.svelte';
+import { breakpoint } from '$lib/stores/breakpoint.svelte';
+import { mobileUI } from '$lib/stores/app-state.svelte';
+import Drawer from '$lib/components/ui/drawer.svelte';
+import BottomSheet from '$lib/components/ui/bottom-sheet.svelte';
+import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 import ShortcutHelp from '$lib/components/shortcut-help.svelte';
 import { restoreSession } from '$lib/stores/persistence.svelte';
 import { onWorkerError } from '$lib/inference/worker-api';
@@ -71,7 +76,6 @@ const pageLayout = css({
 });
 
 const sidebar = css({
-	w: '17rem',
 	flexShrink: 0,
 	borderRightWidth: '1px',
 	borderColor: 'border',
@@ -81,6 +85,7 @@ const sidebar = css({
 	flexDirection: 'column',
 	gap: '6',
 	p: '4',
+	w: { base: '13rem', lg: '17rem' },
 });
 
 const sidebarSection = css({
@@ -105,11 +110,12 @@ const centerArea = css({
 const canvasArea = css({
 	flex: '1',
 	display: 'flex',
-	p: '4',
+	p: { base: '1', md: '2', lg: '4' },
 	minH: '0',
 });
 
 const rightPanel = css({
+	w: '17rem',
 	flexShrink: 0,
 	borderLeftWidth: '1px',
 	borderColor: 'border',
@@ -138,22 +144,43 @@ const helpButton = css({
 	fontWeight: 'bold',
 	_hover: { bg: 'bg.muted', color: 'fg' },
 });
+
+const maskSheetTrigger = css({
+	position: 'fixed',
+	bottom: '12',
+	right: '3',
+	w: '10',
+	h: '10',
+	borderRadius: 'full',
+	bg: 'bg',
+	color: 'fg.muted',
+	border: '1px solid',
+	borderColor: 'border',
+	boxShadow: 'md',
+	cursor: 'pointer',
+	zIndex: '40',
+	display: 'flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	_hover: { bg: 'bg.subtle', color: 'fg' },
+});
 </script>
 
 <div class={pageLayout}>
-	<aside class={sidebar}>
-		<div class={sidebarSection}>
-			<ModelPicker />
-		</div>
-
-		{#if appState.selectedModel}
-			<div class={sidebarDivider}></div>
+	{#if !breakpoint.isMobile}
+		<aside class={sidebar}>
 			<div class={sidebarSection}>
-				<ModelDownload />
+				<ModelPicker />
 			</div>
-		{/if}
 
-	</aside>
+			{#if appState.selectedModel}
+				<div class={sidebarDivider}></div>
+				<div class={sidebarSection}>
+					<ModelDownload />
+				</div>
+			{/if}
+		</aside>
+	{/if}
 
 	<div class={centerArea}>
 		<Toolbar onOpenGallery={() => { galleryOpen = true; }} />
@@ -163,14 +190,54 @@ const helpButton = css({
 		<StatusBar />
 	</div>
 
-	<aside class={rightPanel}>
-		<MaskControls />
-	</aside>
+	{#if breakpoint.isDesktop}
+		<aside class={rightPanel}>
+			<MaskControls />
+		</aside>
+	{/if}
 </div>
 
-<button class={helpButton} onclick={() => (shortcutHelp.open = true)} aria-label="Keyboard shortcuts">
-	?
-</button>
+{#if breakpoint.isMobile}
+	<Drawer
+		open={mobileUI.drawerOpen}
+		onOpenChange={(v: boolean) => { mobileUI.drawerOpen = v; }}
+		title="Model"
+	>
+		<div class={sidebarSection}>
+			<ModelPicker />
+		</div>
+		{#if appState.selectedModel}
+			<div class={sidebarDivider}></div>
+			<div class={sidebarSection}>
+				<ModelDownload />
+			</div>
+		{/if}
+	</Drawer>
+{/if}
+
+{#if breakpoint.isMobileOrTablet}
+	<button
+		class={maskSheetTrigger}
+		onclick={() => { mobileUI.sheetOpen = true; }}
+		aria-label="Mask settings"
+	>
+		<SlidersHorizontal size={18} />
+	</button>
+
+	<BottomSheet
+		open={mobileUI.sheetOpen}
+		onOpenChange={(v: boolean) => { mobileUI.sheetOpen = v; }}
+		title="Mask Controls"
+	>
+		<MaskControls />
+	</BottomSheet>
+{/if}
+
+{#if !breakpoint.isMobile}
+	<button class={helpButton} onclick={() => (shortcutHelp.open = true)} aria-label="Keyboard shortcuts">
+		?
+	</button>
+{/if}
 
 <ShortcutHelp open={shortcutHelp.open} onOpenChange={(v: boolean) => { shortcutHelp.open = v; }} />
 

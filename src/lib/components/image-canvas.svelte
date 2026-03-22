@@ -5,7 +5,6 @@ import { scheduleSave, persistImage } from '$lib/stores/persistence.svelte';
 import {
 	drawPointMarker,
 	drawBoxOutline,
-	drawCrosshair,
 	drawHoverTriggerMarker,
 	drawHoverInferenceRing,
 	drawMaskOverlay,
@@ -41,6 +40,7 @@ import ZoomOut from '@lucide/svelte/icons/zoom-out';
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 import { getLogger } from '@logtape/logtape';
 import DemoStrip from '$lib/components/demo-strip.svelte';
+import { breakpoint } from '$lib/stores/breakpoint.svelte';
 import { css, cx } from 'styled-system/css';
 
 interface Props {
@@ -64,9 +64,19 @@ let canvasHeight = $state(600);
 let dpr = $state(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
 let viewport = $state<Viewport>({ x: 0, y: 0, scale: 1 });
 let mouseImagePos = $state({ x: 0, y: 0 });
-let mouseCssPos = $state({ x: 0, y: 0 });
+
 let isPanning = $state(false);
 let panStart = $state({ x: 0, y: 0 });
+
+let touchStartTime = 0;
+let touchStartPos: { x: number; y: number } | null = null;
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let isTouchPanning = false;
+let lastTouchDist = 0;
+let lastTouchMid = { x: 0, y: 0 };
+let touchMoved = false;
+const LONG_PRESS_MS = 500;
+const TOUCH_MOVE_THRESHOLD = 10;
 
 // DPR change listener
 $effect(() => {
@@ -100,6 +110,19 @@ $effect(() => {
 	const el = containerEl;
 	el.addEventListener('wheel', handleWheel, { passive: false });
 	return () => el.removeEventListener('wheel', handleWheel);
+});
+
+$effect(() => {
+	const canvas = canvasEl;
+	if (!canvas) return;
+	canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+	canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+	canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+	return () => {
+		canvas.removeEventListener('touchstart', handleTouchStart);
+		canvas.removeEventListener('touchmove', handleTouchMove);
+		canvas.removeEventListener('touchend', handleTouchEnd);
+	};
 });
 
 const fit = $derived(
@@ -139,7 +162,7 @@ $effect(() => {
 	void appState.interactionMode;
 	void appState.everythingMasks;
 	void mouseImagePos;
-	void mouseCssPos;
+
 	void fit;
 	void appState.hoverPreviewEnabled;
 	void getHoverInferenceRunning();
@@ -244,11 +267,6 @@ function render() {
 		drawBoxOutline(ctx, appState.box, effScale);
 	}
 
-	// Crosshair (screen space -- drawCrosshair resets transform internally)
-	if (appState.interactionMode === 'point' && appState.currentImage) {
-		drawCrosshair(ctx, mouseCssPos.x, mouseCssPos.y, dpr);
-	}
-
 	// Hover inference ring (image space — pulsing circle while decode is in-flight)
 	if (getHoverInferenceRunning() && appState.interactionMode === 'point') {
 		drawHoverInferenceRing(ctx, mouseImagePos.x, mouseImagePos.y, effScale);
@@ -337,6 +355,165 @@ function handlePanEnd(_event: PointerEvent) {
 	isPanning = false;
 }
 
+function getTouchDistance(t1: Touch, t2: Touch): number {
+	const dx = t1.clientX - t2.clientX;
+	const dy = t1.clientY - t2.clientY;
+	return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getTouchMidpoint(t1: Touch, t2: Touch): { x: number; y: number } {
+	return {
+		x: (t1.clientX + t2.clientX) / 2,
+		y: (t1.clientY + t2.clientY) / 2,
+	};
+}
+
+function cancelLongPress() {
+	if (longPressTimer) {
+		clearTimeout(longPressTimer);
+		longPressTimer = null;
+	}
+}
+
+function placePoint(clientX: number, clientY: number, label: 0 | 1) {
+	if (!appState.currentImage || !canvasEl) return;
+	if (!getIsModelReady()) return;
+	const phase = getPipelinePhase();
+	if (phase === 'model-ready' || phase === 'encoding') return;
+
+	const rect = canvasEl.getBoundingClientRect();
+	const { x, y } = screenToImageCoords(clientX, clientY, rect, fit, viewport);
+	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) return;
+
+	cancelHoverDecode();
+	if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer);
+	pushPromptState();
+	const newPoints = [...appState.points, { x, y, label }];
+	appState.points = newPoints;
+	scheduleSave();
+	decodePrompts(newPoints, null);
+}
+
+function handleTouchStart(event: TouchEvent) {
+	if (!canvasEl) return;
+
+	if (event.touches.length === 2) {
+		event.preventDefault();
+		cancelLongPress();
+		isTouchPanning = true;
+		const t0 = event.touches[0];
+		const t1 = event.touches[1];
+		lastTouchDist = getTouchDistance(t0, t1);
+		lastTouchMid = getTouchMidpoint(t0, t1);
+		return;
+	}
+
+	if (event.touches.length !== 1) return;
+	event.preventDefault();
+
+	const touch = event.touches[0];
+	touchStartTime = Date.now();
+	touchStartPos = { x: touch.clientX, y: touch.clientY };
+	touchMoved = false;
+
+	if (appState.interactionMode === 'box' && appState.currentImage) {
+		const rect = canvasEl.getBoundingClientRect();
+		const { x, y } = screenToImageCoords(touch.clientX, touch.clientY, rect, fit, viewport);
+		pushPromptState();
+		isDragging = true;
+		dragStart = { x, y };
+		appState.box = { x1: x, y1: y, x2: x, y2: y };
+		return;
+	}
+
+	longPressTimer = setTimeout(() => {
+		if (!touchMoved && appState.interactionMode === 'point') {
+			placePoint(touch.clientX, touch.clientY, 0);
+			touchStartPos = null;
+			if (navigator.vibrate) navigator.vibrate(50);
+		}
+		longPressTimer = null;
+	}, LONG_PRESS_MS);
+}
+
+function handleTouchMove(event: TouchEvent) {
+	if (!canvasEl) return;
+
+	if (event.touches.length === 2 && isTouchPanning) {
+		event.preventDefault();
+		const t0 = event.touches[0];
+		const t1 = event.touches[1];
+		const dist = getTouchDistance(t0, t1);
+		const mid = getTouchMidpoint(t0, t1);
+
+		const rect = canvasEl.getBoundingClientRect();
+		const cssX = mid.x - rect.left;
+		const cssY = mid.y - rect.top;
+		const factor = dist / lastTouchDist;
+		viewport = zoomAtPoint(viewport, cssX, cssY, factor, 0.1, 20);
+
+		viewport = {
+			...viewport,
+			x: viewport.x + (mid.x - lastTouchMid.x),
+			y: viewport.y + (mid.y - lastTouchMid.y),
+		};
+
+		lastTouchDist = dist;
+		lastTouchMid = mid;
+		return;
+	}
+
+	if (event.touches.length !== 1) return;
+	const touch = event.touches[0];
+
+	if (touchStartPos) {
+		const dx = touch.clientX - touchStartPos.x;
+		const dy = touch.clientY - touchStartPos.y;
+		if (Math.sqrt(dx * dx + dy * dy) > TOUCH_MOVE_THRESHOLD) {
+			touchMoved = true;
+			cancelLongPress();
+		}
+	}
+
+	if (isDragging && dragStart && appState.interactionMode === 'box') {
+		event.preventDefault();
+		const rect = canvasEl.getBoundingClientRect();
+		const imgPos = screenToImageCoords(touch.clientX, touch.clientY, rect, fit, viewport);
+		appState.box = { x1: dragStart.x, y1: dragStart.y, x2: imgPos.x, y2: imgPos.y };
+	}
+}
+
+function handleTouchEnd(event: TouchEvent) {
+	cancelLongPress();
+
+	if (isTouchPanning && event.touches.length < 2) {
+		isTouchPanning = false;
+		return;
+	}
+
+	if (event.touches.length !== 0) return;
+
+	if (isDragging && appState.box && getIsModelReady()) {
+		scheduleSave();
+		decodePrompts([], appState.box);
+		isDragging = false;
+		dragStart = null;
+		return;
+	}
+	isDragging = false;
+	dragStart = null;
+
+	if (!touchMoved && touchStartPos && appState.interactionMode === 'point') {
+		const elapsed = Date.now() - touchStartTime;
+		if (elapsed < LONG_PRESS_MS) {
+			const ct = event.changedTouches[0];
+			placePoint(ct.clientX, ct.clientY, 1);
+		}
+	}
+
+	touchStartPos = null;
+}
+
 function handleCanvasClick(event: MouseEvent) {
 	if (isPanning) return;
 	cancelHoverDecode();
@@ -390,14 +567,8 @@ function handleCanvasClick(event: MouseEvent) {
 
 	if (appState.interactionMode !== 'point') return;
 
-	if (x < 0 || y < 0 || x >= appState.currentImage.naturalWidth || y >= appState.currentImage.naturalHeight) return;
-
 	const label: 0 | 1 = event.button === 2 || event.shiftKey ? 0 : 1;
-	pushPromptState();
-	const newPoints = [...appState.points, { x, y, label }];
-	appState.points = newPoints;
-	scheduleSave();
-	decodePrompts(newPoints, null);
+	placePoint(event.clientX, event.clientY, label);
 }
 
 function handleContextMenu(event: MouseEvent) {
@@ -422,9 +593,6 @@ function handleMouseMove(event: MouseEvent) {
 	if (!canvasEl) return;
 
 	const rect = canvasEl.getBoundingClientRect();
-	const cssX = event.clientX - rect.left;
-	const cssY = event.clientY - rect.top;
-	mouseCssPos = { x: cssX, y: cssY };
 	mouseImagePos = screenToImageCoords(event.clientX, event.clientY, rect, fit, viewport);
 
 	if (isDragging && dragStart && appState.interactionMode === 'box') {
@@ -482,8 +650,8 @@ const container = css({
 	position: 'relative',
 	flex: '1',
 	minH: '0',
-	bg: 'bg.muted',
-	borderRadius: 'lg',
+	bg: { base: 'bg', md: 'bg.muted' },
+	borderRadius: { base: '0', md: 'lg' },
 	overflow: 'hidden',
 	display: 'flex',
 	alignItems: 'center',
@@ -499,7 +667,7 @@ const canvasStyle = css({
 const zoomControls = css({
 	position: 'absolute',
 	bottom: '3',
-	right: '3',
+	left: '3',
 	display: 'flex',
 	gap: '1',
 	zIndex: 10,
@@ -573,6 +741,10 @@ const cursorPoint = css({
 const cursorBox = css({
 	cursor: 'crosshair',
 });
+
+const cursorGrabbing = css({
+	cursor: 'grabbing',
+});
 </script>
 
 <div
@@ -587,16 +759,18 @@ const cursorBox = css({
 	{#if appState.currentImage}
 		<canvas
 			bind:this={canvasEl}
-			class={cx(canvasStyle, appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : '')}
+			class={cx(canvasStyle, isPanning ? cursorGrabbing : appState.interactionMode === 'point' ? cursorPoint : appState.interactionMode === 'box' ? cursorBox : '')}
 			onclick={handleCanvasClick}
 			oncontextmenu={handleContextMenu}
 			onmousedown={handleMouseDown}
+			onmouseleave={() => { cancelHoverDecode(); if (hoverDebounceTimer) clearTimeout(hoverDebounceTimer); appState.hoverMask = null; appState.hoverTriggerPos = null; }}
 			onmousemove={handleMouseMove}
 			onmouseup={handleMouseUp}
 			onpointerdown={handlePanStart}
 			onpointermove={handlePanMove}
 			onpointerup={handlePanEnd}
 		></canvas>
+		{#if breakpoint.isDesktop}
 		<div class={zoomControls}>
 			<button
 				type="button"
@@ -623,6 +797,7 @@ const cursorBox = css({
 				<RotateCcw size={16} />
 			</button>
 		</div>
+		{/if}
 	{:else}
 		<div class={emptyState}>
 			<label class={`${dropZone} ${isDropHover ? dropZoneActive : ''}`}>

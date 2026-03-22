@@ -8,6 +8,9 @@ import ThemeToggle from '$lib/components/theme-toggle.svelte';
 import Button from '$lib/components/ui/button.svelte';
 import Github from '@lucide/svelte/icons/github';
 import Layers from '@lucide/svelte/icons/layers';
+import Menu from '@lucide/svelte/icons/menu';
+import { breakpoint } from '$lib/stores/breakpoint.svelte';
+import { mobileUI } from '$lib/stores/app-state.svelte';
 import type { Snippet } from 'svelte';
 import { css } from 'styled-system/css';
 import ToastContainer from '$lib/components/ui/toast.svelte';
@@ -73,6 +76,20 @@ const navActions = css({
 	alignItems: 'center',
 	gap: '2',
 });
+
+const menuBtn = css({
+	display: 'inline-flex',
+	alignItems: 'center',
+	justifyContent: 'center',
+	w: '8',
+	h: '8',
+	borderRadius: 'md',
+	cursor: 'pointer',
+	border: 'none',
+	bg: 'transparent',
+	color: 'fg.muted',
+	_hover: { bg: 'bg.muted', color: 'fg' },
+});
 </script>
 
 <svelte:head>
@@ -83,6 +100,15 @@ const navActions = css({
 <div class={layout}>
   <header class={header}>
     <div class={headerInner}>
+      {#if breakpoint.isMobileOrTablet}
+        <button
+          class={menuBtn}
+          onclick={() => { mobileUI.drawerOpen = !mobileUI.drawerOpen; }}
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
+      {/if}
       <a href={resolve('/')} class={logoLink}>
         <Layers size={20} class={logoIcon} />
         <span class={logoText}>WebSAM</span>

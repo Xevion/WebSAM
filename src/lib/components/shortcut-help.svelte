@@ -10,7 +10,7 @@ interface Props {
 
 const { open, onOpenChange }: Props = $props();
 
-const allShortcuts = [...SHORTCUTS, { keys: '?', description: 'Show keyboard shortcuts' }];
+const allShortcuts = SHORTCUTS;
 
 function formatKey(raw: string): string {
 	return raw
