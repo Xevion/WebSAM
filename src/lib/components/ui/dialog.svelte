@@ -31,18 +31,26 @@ const positioner = css({
 	display: 'flex',
 	alignItems: 'center',
 	justifyContent: 'center',
+	// Padding keeps the dialog off the viewport edges; overflow is a safety net
+	// for viewports shorter than even the height-capped content.
+	p: '4',
+	overflowY: 'auto',
 	zIndex: '50',
 });
 
 const content = css({
+	display: 'flex',
+	flexDirection: 'column',
 	bg: 'bg',
 	borderWidth: '1px',
 	borderColor: 'border',
 	borderRadius: 'xl',
 	boxShadow: 'lg',
-	p: '6',
 	w: 'full',
-	mx: '4',
+	// Cap to the (padded) viewport so tall content scrolls internally rather
+	// than overflowing past the top edge where it can't be reached.
+	maxH: 'full',
+	overflow: 'hidden',
 	_open: { animation: 'slide-fade-in 200ms ease-out' },
 });
 
@@ -50,7 +58,24 @@ const header = css({
 	display: 'flex',
 	justifyContent: 'space-between',
 	alignItems: 'start',
-	mb: '4',
+	flexShrink: 0,
+	px: '6',
+	pt: '6',
+	pb: '4',
+});
+
+const body = css({
+	flex: '1',
+	minH: '0',
+	overflowY: 'auto',
+	px: '6',
+	pb: '6',
+	scrollbarWidth: 'thin',
+	scrollbarColor: 'var(--colors-border) transparent',
+	'&::-webkit-scrollbar': { width: '6px' },
+	'&::-webkit-scrollbar-track': { background: 'transparent' },
+	'&::-webkit-scrollbar-thumb': { background: 'var(--colors-border)', borderRadius: '9999px' },
+	'&::-webkit-scrollbar-thumb:hover': { background: 'var(--colors-fg-subtle)' },
 });
 
 const titleStyle = css({
@@ -95,7 +120,9 @@ const closeBtn = css({
 						<X size={16} />
 					</Dialog.CloseTrigger>
 				</div>
-				{@render children()}
+				<div class={body}>
+					{@render children()}
+				</div>
 			</Dialog.Content>
 		</Dialog.Positioner>
 	</Portal>

@@ -5,12 +5,8 @@ let { size = 20, class: className = '' }: { size?: number; class?: string } = $p
 
 const id = `lg-${Math.random().toString(36).slice(2, 8)}`;
 
-const bodyGrad = $derived(
-	themeStore.isDark ? ['#FB7185', '#C084FC'] : ['#E11D48', '#7C3AED'],
-);
-const frag = $derived(
-	themeStore.isDark ? ['#C4B5FD', '#DDD6FE'] : ['#A78BFA', '#C4B5FD'],
-);
+const bodyGrad = $derived(themeStore.isDark ? ['#FB7185', '#C084FC'] : ['#E11D48', '#7C3AED']);
+const frag = $derived(themeStore.isDark ? ['#C4B5FD', '#DDD6FE'] : ['#A78BFA', '#C4B5FD']);
 </script>
 
 <svg

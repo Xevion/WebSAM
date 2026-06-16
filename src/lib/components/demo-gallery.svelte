@@ -114,6 +114,16 @@ const tagChipsWrap = css({
 	gap: '1.5',
 	px: '3',
 	py: '2',
+	// Cap the expanded tag list so the ~85 chips can't balloon the dialog;
+	// scroll within the bordered box instead.
+	maxH: '16rem',
+	overflowY: 'auto',
+	scrollbarWidth: 'thin',
+	scrollbarColor: 'var(--colors-border) transparent',
+	'&::-webkit-scrollbar': { width: '6px' },
+	'&::-webkit-scrollbar-track': { background: 'transparent' },
+	'&::-webkit-scrollbar-thumb': { background: 'var(--colors-border)', borderRadius: '9999px' },
+	'&::-webkit-scrollbar-thumb:hover': { background: 'var(--colors-fg-subtle)' },
 });
 
 const tagChip = css({
@@ -146,14 +156,6 @@ const grid = css({
 	display: 'grid',
 	gridTemplateColumns: 'repeat(auto-fill, minmax(14rem, 1fr))',
 	gap: '3',
-	maxH: '60vh',
-	overflowY: 'auto',
-	scrollbarWidth: 'thin',
-	scrollbarColor: 'var(--colors-border) transparent',
-	'&::-webkit-scrollbar': { width: '6px' },
-	'&::-webkit-scrollbar-track': { background: 'transparent' },
-	'&::-webkit-scrollbar-thumb': { background: 'var(--colors-border)', borderRadius: '9999px' },
-	'&::-webkit-scrollbar-thumb:hover': { background: 'var(--colors-fg-subtle)' },
 });
 
 const card = css({
