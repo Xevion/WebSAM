@@ -11,10 +11,11 @@ interface Props {
 	title: string;
 	description?: string;
 	maxWidth?: string;
+	height?: string;
 	children: Snippet;
 }
 
-const { open, onOpenChange, title, description, maxWidth = '28rem', children }: Props = $props();
+const { open, onOpenChange, title, description, maxWidth = '28rem', height, children }: Props = $props();
 
 const backdrop = css({
 	position: 'fixed',
@@ -108,7 +109,7 @@ const closeBtn = css({
 	<Portal>
 		<Dialog.Backdrop class={backdrop} />
 		<Dialog.Positioner class={positioner}>
-			<Dialog.Content class={content} style="max-width: {maxWidth}">
+			<Dialog.Content class={content} style="max-width: {maxWidth}{height ? `; height: ${height}` : ''}">
 				<div class={header}>
 					<div>
 						<Dialog.Title class={titleStyle}>{title}</Dialog.Title>

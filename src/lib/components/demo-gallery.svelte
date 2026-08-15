@@ -1,5 +1,6 @@
 <script lang="ts">
 import DialogComponent from '$lib/components/ui/dialog.svelte';
+import TabsComponent from '$lib/components/ui/tabs.svelte';
 import { demoImageStore } from '$lib/demo-images/store.svelte';
 import { loadDemoImage } from '$lib/demo-images/loader';
 import { TAG_GROUPS, DEMO_COLLECTIONS } from '$lib/demo-images/collections';
@@ -39,38 +40,24 @@ async function handleSelect(image: (typeof demoImageStore.filtered)[number]) {
 	}
 }
 
+const ALL_COLLECTIONS_VALUE = 'all';
+
+const collectionTabs = [
+	{ value: ALL_COLLECTIONS_VALUE, label: 'All' },
+	...DEMO_COLLECTIONS.map((collection) => ({
+		value: collection.id,
+		label: collection.name,
+		description: collection.description,
+	})),
+];
+
 function formatSize(bytes: number): string {
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 const collectionsRow = css({
-	display: 'flex',
-	gap: '2',
-	flexWrap: 'wrap',
 	mb: '3',
-});
-
-const collectionBtn = css({
-	px: '3',
-	py: '1.5',
-	borderRadius: 'full',
-	fontSize: 'sm',
-	fontWeight: 'medium',
-	cursor: 'pointer',
-	border: '1px solid',
-	borderColor: 'border',
-	bg: 'transparent',
-	color: 'fg.muted',
-	transition: 'all 150ms',
-	_hover: { borderColor: 'primary', color: 'primary' },
-});
-
-const collectionActive = css({
-	bg: 'primary',
-	color: 'white',
-	borderColor: 'primary',
-	_hover: { bg: 'primary', color: 'white' },
 });
 
 const tagSection = css({
@@ -231,27 +218,15 @@ const noResults = css({
 	title="Demo Image Gallery"
 	description="Choose an image to try WebSAM's segmentation"
 	maxWidth="56rem"
+	height="min(85vh, 44rem)"
 >
 	<!-- Collection presets -->
-	<div class={collectionsRow}>
-		<button
-			type="button"
-			class={cx(collectionBtn, !demoImageStore.activeCollection ? collectionActive : '')}
-			onclick={() => demoImageStore.setCollection(null)}
-		>
-			All
-		</button>
-		{#each DEMO_COLLECTIONS as collection (collection.id)}
-			<button
-				type="button"
-				class={cx(collectionBtn, demoImageStore.activeCollection === collection.id ? collectionActive : '')}
-				onclick={() => demoImageStore.setCollection(collection.id)}
-				title={collection.description}
-			>
-				{collection.name}
-			</button>
-		{/each}
-	</div>
+	<TabsComponent
+		items={collectionTabs}
+		value={demoImageStore.activeCollection ?? ALL_COLLECTIONS_VALUE}
+		onValueChange={(value: string) => demoImageStore.setCollection(value === ALL_COLLECTIONS_VALUE ? null : value)}
+		class={collectionsRow}
+	/>
 
 	<!-- Tag filter (collapsible) -->
 	<div class={tagSection}>
