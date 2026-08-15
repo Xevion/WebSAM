@@ -71,6 +71,65 @@ export function imageToModelCoords(
 	return [imageX * scale, imageY * scale];
 }
 
+const STORAGE_MAX_DIMENSION = 4096;
+const STORAGE_QUALITY = 0.82;
+
+function drawScaled(source: CanvasImageSource, width: number, height: number): HTMLCanvasElement {
+	const canvas = document.createElement('canvas');
+	canvas.width = width;
+	canvas.height = height;
+	const ctx = canvas.getContext('2d')!;
+	ctx.imageSmoothingEnabled = true;
+	ctx.imageSmoothingQuality = 'high';
+	ctx.drawImage(source, 0, 0, width, height);
+	return canvas;
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+	return new Promise((resolve, reject) => {
+		canvas.toBlob(
+			(blob) => {
+				if (blob) resolve(blob);
+				else reject(new Error('Failed to encode canvas'));
+			},
+			type,
+			quality,
+		);
+	});
+}
+
+/**
+ * Downscale and re-encode an image for OPFS storage if it exceeds the size cap.
+ * Files already within the cap are returned unchanged. Downscaling steps down by
+ * ~2x per pass rather than a single large-ratio draw, which avoids the aliasing
+ * a single drawImage call produces on big downscale ratios.
+ */
+export async function compressForStorage(file: File, maxDimension: number = STORAGE_MAX_DIMENSION): Promise<Blob> {
+	const bitmap = await createImageBitmap(file);
+	try {
+		const longestEdge = Math.max(bitmap.width, bitmap.height);
+		if (longestEdge <= maxDimension) return file;
+
+		const scale = maxDimension / longestEdge;
+		const targetWidth = Math.round(bitmap.width * scale);
+		const targetHeight = Math.round(bitmap.height * scale);
+
+		let source: CanvasImageSource = bitmap;
+		let width = bitmap.width;
+		let height = bitmap.height;
+		while (width / 2 > targetWidth && height / 2 > targetHeight) {
+			width = Math.max(targetWidth, Math.floor(width / 2));
+			height = Math.max(targetHeight, Math.floor(height / 2));
+			source = drawScaled(source, width, height);
+		}
+
+		const finalCanvas = drawScaled(source, targetWidth, targetHeight);
+		return await canvasToBlob(finalCanvas, 'image/webp', STORAGE_QUALITY);
+	} finally {
+		bitmap.close();
+	}
+}
+
 /**
  * Export an ImageData mask as a PNG Blob.
  */

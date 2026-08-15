@@ -9,7 +9,7 @@ import {
 } from '$lib/storage/metadata';
 import { writeCurrentImage, readCurrentImage, deleteCurrentImage } from '$lib/storage/opfs';
 import { MODEL_REGISTRY } from '$lib/inference/models';
-import { loadImageFromFile } from '$lib/utils/image';
+import { loadImageFromFile, compressForStorage } from '$lib/utils/image';
 import { toaster } from '$lib/stores/toast.svelte';
 import { errorMessage } from '$lib/utils/error';
 
@@ -93,6 +93,7 @@ export async function restoreSession(): Promise<void> {
 }
 
 export async function persistImage(file: File): Promise<void> {
-	const buffer = await file.arrayBuffer();
+	const stored = await compressForStorage(file);
+	const buffer = await stored.arrayBuffer();
 	await writeCurrentImage(buffer);
 }
