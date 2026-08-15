@@ -1,0 +1,5 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"entry": ["scripts/*.ts", "tempo.config.ts"],
+	"ignore": ["src/lib/components/ui/select.svelte", "src/lib/components/ui/tabs.svelte"]
+}
