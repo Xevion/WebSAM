@@ -12,13 +12,6 @@ const { open, onOpenChange }: Props = $props();
 
 const allShortcuts = SHORTCUTS;
 
-function formatKey(raw: string): string {
-	return raw
-		.split('+')
-		.map((k) => k.charAt(0).toUpperCase() + k.slice(1))
-		.join(' + ');
-}
-
 const list = css({
 	display: 'flex',
 	flexDirection: 'column',
@@ -40,28 +33,31 @@ const descriptionStyle = css({
 	color: 'fg',
 });
 
-const keysWrapper = css({
-	display: 'flex',
-	gap: '1',
-	flexShrink: 0,
-});
-
 const kbd = css({
 	display: 'inline-flex',
 	alignItems: 'center',
-	justifyContent: 'center',
-	minW: '6',
-	h: '6',
-	px: '1.5',
+	gap: '1',
+	flexShrink: 0,
+	px: '2.5',
+	py: '1',
 	fontSize: 'xs',
-	fontWeight: 'medium',
+	fontWeight: 'bold',
 	fontFamily: 'mono',
+	letterSpacing: 'wide',
+	textTransform: 'uppercase',
+	color: 'fg',
 	bg: 'bg.muted',
-	color: 'fg.muted',
 	borderWidth: '1px',
-	borderColor: 'border',
-	borderRadius: 'sm',
+	borderColor: 'border.strong',
+	borderBottomWidth: '2px',
+	borderRadius: 'md',
 	lineHeight: '1',
+	boxShadow: 'inset 0 1px 0 0 rgb(255 255 255 / 0.15), 0 1px 0 0 rgb(0 0 0 / 0.2)',
+});
+
+const sep = css({
+	color: 'fg.subtle',
+	fontWeight: 'medium',
 });
 </script>
 
@@ -70,14 +66,12 @@ const kbd = css({
 		{#each allShortcuts as shortcut (shortcut.keys)}
 			<div class={row}>
 				<span class={descriptionStyle}>{shortcut.description}</span>
-				<span class={keysWrapper}>
-					{#each formatKey(shortcut.keys).split(' + ') as part, i (part)}
-						{#if i > 0}
-							<span class={css({ fontSize: 'xs', color: 'fg.subtle', alignSelf: 'center' })}>+</span>
-						{/if}
-						<kbd class={kbd}>{part}</kbd>
+				<kbd class={kbd}>
+					{#each shortcut.keys.split('+') as part, i (part)}
+						{#if i > 0}<span class={sep}>+</span>{/if}
+						<span>{part}</span>
 					{/each}
-				</span>
+				</kbd>
 			</div>
 		{/each}
 	</div>
