@@ -56,7 +56,7 @@ export default tseslint.config(
 		...tseslint.configs.disableTypeChecked,
 	},
 	{
-		files: ['**/*.mjs', 'panda.config.ts'],
+		files: ['**/*.mjs', 'panda.config.ts', 'tempo.config.ts'],
 		...tseslint.configs.disableTypeChecked,
 	},
 );
